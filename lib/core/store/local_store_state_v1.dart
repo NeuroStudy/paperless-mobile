@@ -64,6 +64,8 @@ class _LocalUserAccountV1 {
 }
 
 LocalStoreState convertLocalStoreStateV1ToV2(Map<String, dynamic> json) {
+  // This is the migration boundary where the deprecated schema is required.
+  // ignore: deprecated_member_use_from_same_package
   final oldState = _LocalStoreStateV1.fromJson(json);
   return LocalStoreState(
     globalSettings: oldState.globalSettings,

@@ -1,6 +1,5 @@
 import 'package:cached_query_flutter/cached_query_flutter.dart';
 import 'package:flutter/material.dart';
-import 'package:paperless_mobile/api/models/document.dart';
 import 'package:paperless_mobile/core/extensions/flutter_extensions.dart';
 import 'package:paperless_mobile/features/documents/view/widgets/items/document_detailed_item.dart';
 import 'package:paperless_mobile/features/documents/view/widgets/items/document_grid_item.dart';

@@ -1,0 +1,39 @@
+/*
+    localizable.strings
+    WeScanSampleProject
+
+    Created by Boris Emorine on 2/27/18.
+    Copyright © 2018 WeTransfer. All rights reserved.
+ */
+
+/* The "Next" button on the right side of the navigation bar on the Edit screen. */
+"wescan.edit.button.next" = "Weiter";
+
+/* The title on the navigation bar of the Edit screen. */
+"wescan.edit.title" = "Scan editieren";
+
+/* The title on the navigation bar of the Review screen. */
+"wescan.review.title" = "Überprüfen";
+
+/* The button titles on the Scanning screen. */
+"wescan.scanning.cancel" = "Abbrechen";
+"wescan.scanning.auto" = "Auto";
+"wescan.scanning.manual" = "Manuell";
+
+"paperless.edit" = "Scan bearbeiten";
+"paperless.save" = "Speichern";
+"paperless.cancel" = "Abbrechen";
+"paperless.crop" = "Zuschneiden";
+"paperless.apply" = "Anwenden";
+"paperless.rotate" = "Drehen";
+"paperless.retake" = "Neu aufnehmen";
+"paperless.gallery" = "Galerie";
+"paperless.flash" = "Blitz";
+"paperless.auto" = "Auto";
+"paperless.manual" = "Manuell";
+"paperless.filter.0" = "Original";
+"paperless.filter.1" = "Farbe optimieren";
+"paperless.reduceShadows" = "Schatten reduzieren";
+"paperless.filter.2" = "Graustufen";
+"paperless.filter.3" = "Schwarzweiß";
+"paperless.error" = "Der Scan konnte nicht verarbeitet werden. Bitte erneut versuchen.";

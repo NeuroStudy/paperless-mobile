@@ -74,7 +74,7 @@ class DocumentPreview extends StatelessWidget {
                   documentId,
                 )
               : '',
-          errorWidget: (ctxt, msg, __) => SizedBox.shrink(),
+          errorWidget: (_, _, _) => SizedBox.shrink(),
           placeholder: (context, value) => Shimmer.fromColors(
             baseColor: Colors.grey[300]!,
             highlightColor: Colors.grey[100]!,

@@ -216,6 +216,17 @@ class _LabelsPageState extends State<LabelsPage> with TickerProviderStateMixin {
                   notificationPredicate: (notification) =>
                       connectedState.isConnected,
                   onRefresh: () async {
+                    final labelName = [
+                      if (context.uiSettings$.canViewCorrespondents)
+                        "correspondents",
+                      if (context.uiSettings$.canViewDocumentTypes)
+                        "document types",
+                      if (context.uiSettings$.canViewTags) "tags",
+                      if (context.uiSettings$.canViewStoragePaths)
+                        "storage paths",
+                      if (context.uiSettings$.canViewCustomFields)
+                        "custom fields",
+                    ][_currentIndex];
                     try {
                       await [
                         if (context.uiSettings$.canViewCorrespondents)
@@ -231,8 +242,7 @@ class _LabelsPageState extends State<LabelsPage> with TickerProviderStateMixin {
                       ][_currentIndex].call();
                     } catch (error, stackTrace) {
                       logger.fe(
-                        "An error ocurred while reloading "
-                        "${[if (context.uiSettings$.canViewCorrespondents) "correspondents", if (context.uiSettings$.canViewDocumentTypes) "document types", if (context.uiSettings$.canViewTags) "tags", if (context.uiSettings$.canViewStoragePaths) "storage paths", if (context.uiSettings$.canViewCustomFields) "custom fields"][_currentIndex]}.",
+                        "An error occurred while reloading $labelName.",
                         error: error,
                         stackTrace: stackTrace,
                         className: runtimeType.toString(),

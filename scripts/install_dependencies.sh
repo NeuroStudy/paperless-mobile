@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-set -Euo pipefail
+set -Eeuo pipefail
 
 __script_dir=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 readonly __script_dir
 
 cd "$__script_dir/../"
 
-dart pub get
-flutter gen-l10n
-dart run build_runner build --delete-conflicting-outputs
+./flutter/bin/flutter pub get
+./flutter/bin/flutter gen-l10n
+./flutter/bin/dart run build_runner build --delete-conflicting-outputs

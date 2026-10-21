@@ -1,0 +1,19 @@
+<resources>
+    <string name="scanner_edit">Scan bearbeiten</string>
+    <string name="scanner_capture">Aufnehmen</string>
+    <string name="scanner_gallery">Galerie</string>
+    <string name="scanner_flash">Blitz</string>
+    <string name="scanner_flash_on">Blitz an</string>
+    <string name="scanner_original">Original</string>
+    <string name="scanner_enhanced">Farbe optimieren</string>
+    <string name="scanner_reduce_shadows">Schatten reduzieren</string>
+    <string name="scanner_grayscale">Graustufen</string>
+    <string name="scanner_retake">Neu aufnehmen</string>
+    <string name="scanner_apply">Anwenden</string>
+    <string name="scanner_read_error">Der Scan konnte nicht gelesen werden. Bitte erneut versuchen.</string>
+    <string name="crop">Zuschneiden</string>
+    <string name="rotate">Drehen</string>
+    <string name="save">Speichern</string>
+    <string name="black">Schwarzweiß</string>
+    <string name="scan">Scannen</string>
+</resources>

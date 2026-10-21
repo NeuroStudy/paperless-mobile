@@ -1,12 +1,18 @@
 enum ProcessingStatus { starting, working, success, error }
 
+// Names match the paperless-ngx message values decoded with values.byName.
 enum ProcessingMessage {
+  // ignore: constant_identifier_names
   new_file,
+  // ignore: constant_identifier_names
   parsing_document,
+  // ignore: constant_identifier_names
   generating_thumbnail,
+  // ignore: constant_identifier_names
   parse_date,
+  // ignore: constant_identifier_names
   save_document,
-  finished
+  finished,
 }
 
 class DocumentProcessingStatus {

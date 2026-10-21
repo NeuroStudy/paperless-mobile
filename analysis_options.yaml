@@ -26,4 +26,4 @@ linter:
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
 analyzer:
-  exclude: ["**/*.g.dart", "**/*.freezed.dart"]
+  exclude: ["flutter/**", "**/*.g.dart", "**/*.freezed.dart"]

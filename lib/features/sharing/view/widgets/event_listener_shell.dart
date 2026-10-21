@@ -40,6 +40,7 @@ class _EventListenerShellState extends State<EventListenerShell> {
   void initState() {
     super.initState();
     ReceiveSharingIntent.instance.getInitialMedia().then((files) async {
+      if (!mounted) return;
       if (files.isEmpty) {
         final shouldShowChangelog = await _shouldShowChangelog;
         if (shouldShowChangelog && mounted) {
@@ -54,9 +55,11 @@ class _EventListenerShellState extends State<EventListenerShell> {
     );
     context.read<PendingTasksNotifier>().addListener(_onTasksChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
       final userId = context.loggedInUser.appUserId;
       final notifier = context.read<ConsumptionChangeNotifier>();
       await notifier.isInitialized;
+      if (!mounted) return;
       final pendingFiles = notifier.pendingFiles;
       if (pendingFiles.isEmpty) {
         return;
@@ -70,7 +73,7 @@ class _EventListenerShellState extends State<EventListenerShell> {
                 PendingFilesInfoDialog(pendingFiles: pendingFiles),
           ) ??
           false;
-      if (shouldProcess) {
+      if (shouldProcess && mounted) {
         await consumeLocalFiles(context, files: pendingFiles, userId: userId);
       }
     });
@@ -112,6 +115,7 @@ class _EventListenerShellState extends State<EventListenerShell> {
   }
 
   void _onReceiveSharedFiles(List<SharedMediaFile> sharedFiles) async {
+    if (!mounted) return;
     final files = sharedFiles.map((file) => File(file.path)).toList();
     final userId = context.loggedInAppUserId!;
     if (files.isNotEmpty) {
@@ -165,6 +169,7 @@ Future<void> consumeLocalFile(
     return;
   }
 
+  if (!context.mounted) return;
   final bytes = file.readAsBytes();
   // if () {
   //   try {
@@ -232,6 +237,7 @@ Future<void> consumeLocalFiles(
   bool exitAppAfterConsumed = false,
 }) async {
   for (int i = 0; i < files.length; i++) {
+    if (!context.mounted) return;
     final file = files[i];
     await consumeLocalFile(
       context,

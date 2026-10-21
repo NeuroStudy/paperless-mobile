@@ -47,6 +47,7 @@ class _ScannerPageState extends State<ScannerPage>
       SliverOverlapAbsorberHandle();
 
   final _scrollController = ScrollController();
+  bool _openingScanner = false;
 
   @override
   Widget build(BuildContext context) {
@@ -220,33 +221,48 @@ class _ScannerPageState extends State<ScannerPage>
   }
 
   void _openDocumentScanner(BuildContext context) async {
-    final isGranted = await askForPermission(Permission.camera);
-    if (!isGranted) {
-      return;
-    }
-    final file = await FileService.instance.allocateTemporaryFile(
-      PaperlessDirectoryType.scans,
-      extension: 'jpeg',
-      create: true,
-    );
-    if (kDebugMode) {
-      dev.log('[ScannerPage] Created temporary file: ${file.path}');
-    }
-
-    final success = await EdgeDetection.detectEdge(file.path);
-    if (!success) {
-      if (kDebugMode) {
-        dev.log(
-          '[ScannerPage] Scan either not successful or canceled by user.',
+    if (_openingScanner) return;
+    _openingScanner = true;
+    File? file;
+    var added = false;
+    try {
+      final isGranted = await askForPermission(Permission.camera);
+      if (!isGranted || !context.mounted) return;
+      file = await FileService.instance.allocateTemporaryFile(
+        PaperlessDirectoryType.scans,
+        extension: 'jpeg',
+        create: true,
+      );
+      if (!context.mounted) return;
+      final success = await EdgeDetection.detectEdge(
+        file.path,
+        androidScanTitle: S.of(context)!.scanner,
+      );
+      if (!success || !context.mounted) return;
+      final header = await file.openRead(0, 3).first;
+      if (header.length < 3 ||
+          header[0] != 0xff ||
+          header[1] != 0xd8 ||
+          header[2] != 0xff) {
+        throw const FileSystemException(
+          'The scanner did not save a valid image.',
         );
       }
-      return;
+      if (!context.mounted) return;
+      context.read<DocumentScannerCubit>().addScan(file);
+      added = true;
+    } catch (error) {
+      if (context.mounted) showGenericError(context, error);
+    } finally {
+      _openingScanner = false;
+      if (!added && file != null) {
+        try {
+          if (await file.exists()) await file.delete();
+        } on FileSystemException catch (error) {
+          if (kDebugMode) dev.log('[ScannerPage] Scan cleanup failed: $error');
+        }
+      }
     }
-    if (kDebugMode) {
-      dev.log('[ScannerPage] Wrote image to temporary file: ${file.path}');
-    }
-    if (!context.mounted) return;
-    context.read<DocumentScannerCubit>().addScan(file);
   }
 
   void _onPrepareDocumentUpload(BuildContext context, List<File> scans) async {

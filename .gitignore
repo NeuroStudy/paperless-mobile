@@ -19,10 +19,9 @@
 android/key.properties
 android/build
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-.vscode/
+# Share the pinned Flutter SDK settings; keep personal editor files ignored.
+.vscode/*
+!.vscode/settings.json
 *.code-workspace
 
 # Flutter/Dart/Pub related
