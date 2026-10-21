@@ -247,6 +247,7 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
         width: prepared.width,
         height: prepared.height,
         rotationCompensation: prepared.rotation,
+        channels: prepared.channels,
       );
 
       // null means skipped (still processing) — don't count.

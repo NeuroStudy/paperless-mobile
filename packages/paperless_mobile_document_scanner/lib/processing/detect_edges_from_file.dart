@@ -7,13 +7,13 @@ import 'package:paperless_mobile_document_scanner/processing/detect_edges.dart';
 
 /// Detects document edges from a static image (PNG/JPEG bytes).
 ///
-/// Uses [EdgeDetectionConfig.accurate] by default for higher-quality detection
-/// on a captured still image. Pass a custom [config] to override.
+/// Uses the same [EdgeDetectionConfig.fourPoint] recognizer as live analysis.
+/// Pass a custom [config] to override.
 ///
 /// Returns the detected [DocumentFrame] if a document quad is found, or `null`.
 Future<DocumentFrame?> detectEdgesFromImageBytes(
   Uint8List imageBytes, {
-  EdgeDetectionConfig config = EdgeDetectionConfig.accurate,
+  EdgeDetectionConfig config = EdgeDetectionConfig.fourPoint,
 }) async {
   final mat = cv4.imdecode(imageBytes, cv4.IMREAD_COLOR);
   try {

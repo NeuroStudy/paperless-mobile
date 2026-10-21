@@ -35,36 +35,82 @@ int? computeRotationCompensation(
   return rotationCompensation;
 }
 
-/// Extracts RGBA bytes and rotation compensation from a [CameraImage].
-/// Returns null if the format is unsupported or rotation cannot be computed.
-({Uint8List bytes, int width, int height, int rotation})? prepareCameraImage(
+/// Copies only luminance pixels, respecting camera row and pixel strides.
+/// Chroma and row padding must never become document edges.
+Uint8List? copyCameraLuma(
+  Uint8List source, {
+  required int width,
+  required int height,
+  required int bytesPerRow,
+  int bytesPerPixel = 1,
+}) {
+  if (width <= 0 ||
+      height <= 0 ||
+      bytesPerPixel <= 0 ||
+      bytesPerRow < (width - 1) * bytesPerPixel + 1 ||
+      source.length <
+          (height - 1) * bytesPerRow + (width - 1) * bytesPerPixel + 1) {
+    return null;
+  }
+  final output = Uint8List(width * height);
+  for (var y = 0; y < height; y++) {
+    final row = y * bytesPerRow;
+    if (bytesPerPixel == 1) {
+      output.setRange(y * width, (y + 1) * width, source, row);
+    } else {
+      for (var x = 0; x < width; x++) {
+        output[y * width + x] = source[row + x * bytesPerPixel];
+      }
+    }
+  }
+  return output;
+}
+
+/// Prepares analysis pixels without changing camera capture settings.
+/// Android YUV frames use their luminance plane, as in the native recognizer.
+/// BGRA frames retain the existing conversion path.
+({Uint8List bytes, int width, int height, int rotation, int channels})?
+prepareCameraImage(
   CameraImage image,
   int? sensorOrientation,
   DeviceOrientation deviceOrientation,
   CameraLensDirection lensDirection,
 ) {
   final format = InputImageFormatValue.fromRawValue(image.format.raw);
-  if (format == null) return null;
-
-  final bytes = switch (format) {
-    InputImageFormat.yuv_420_888 => yuv420ToRGBA8888(image),
-    InputImageFormat.nv21 => nv21ToRGBA8888(image),
-    InputImageFormat.bgra8888 => bgraToRgbaInPlace(image.planes.first.bytes),
-    _ => throw UnimplementedError(),
-  };
-
   final rotation = computeRotationCompensation(
     sensorOrientation,
     deviceOrientation,
     lensDirection,
   );
-  if (rotation == null) return null;
-
+  if (format == null || rotation == null || image.planes.isEmpty) return null;
+  final plane = image.planes.first;
+  final Uint8List? bytes;
+  final int channels;
+  switch (format) {
+    case InputImageFormat.yuv_420_888:
+    case InputImageFormat.nv21:
+    case InputImageFormat.yuv420:
+      bytes = copyCameraLuma(
+        plane.bytes,
+        width: image.width,
+        height: image.height,
+        bytesPerRow: plane.bytesPerRow,
+        bytesPerPixel: plane.bytesPerPixel ?? 1,
+      );
+      channels = 1;
+    case InputImageFormat.bgra8888:
+      bytes = bgraToRgbaInPlace(plane.bytes);
+      channels = 4;
+    default:
+      return null;
+  }
+  if (bytes == null) return null;
   return (
     bytes: bytes,
     width: image.width,
     height: image.height,
     rotation: rotation,
+    channels: channels,
   );
 }
 
@@ -77,59 +123,55 @@ void processImage(
   onFrameDetected, {
   DebugStage debugStage = DebugStage.none,
 }) async {
-  final format = InputImageFormatValue.fromRawValue(image.format.raw);
-  if (format == null) return;
-
-  final bytes = switch (format) {
-    InputImageFormat.yuv_420_888 => yuv420ToRGBA8888(image),
-    InputImageFormat.nv21 => nv21ToRGBA8888(image),
-    InputImageFormat.bgra8888 => bgraToRgbaInPlace(image.planes.first.bytes),
-    _ => throw UnimplementedError(),
-  };
-
-  cv4.Mat mat = cv4.Mat.fromList(
-    image.height,
-    image.width,
-    cv4.MatType.CV_8UC4,
-    bytes,
-  );
-
-  final rotationCompensation = computeRotationCompensation(
+  final prepared = prepareCameraImage(
+    image,
     sensorOrientation,
     deviceOrientation,
     lensDirection,
   );
-  if (rotationCompensation == null) return;
-
-  switch (rotationCompensation) {
-    case 90:
-      await cv4.rotateAsync(mat, cv4.ROTATE_90_CLOCKWISE, dst: mat);
-      break;
-    case 180:
-      await cv4.rotateAsync(mat, cv4.ROTATE_180, dst: mat);
-      break;
-    case 270:
-      await cv4.rotateAsync(mat, cv4.ROTATE_90_COUNTERCLOCKWISE, dst: mat);
-      break;
-    default:
-      // no rotation needed
-      break;
-  }
-
-  final (frame, debugImage) = await detectDocumentEdges(
-    mat,
-    debugStage: debugStage,
+  if (prepared == null) return;
+  final mat = cv4.Mat.fromList(
+    prepared.height,
+    prepared.width,
+    prepared.channels == 1 ? cv4.MatType.CV_8UC1 : cv4.MatType.CV_8UC4,
+    prepared.bytes,
   );
-  final imageSize = Size(mat.cols.toDouble(), mat.rows.toDouble());
-  mat.dispose();
-  if (frame != null) {
-    onFrameDetected(frame, imageSize, debugImage);
+  try {
+    switch (prepared.rotation) {
+      case 90:
+        await cv4.rotateAsync(mat, cv4.ROTATE_90_CLOCKWISE, dst: mat);
+      case 180:
+        await cv4.rotateAsync(mat, cv4.ROTATE_180, dst: mat);
+      case 270:
+        await cv4.rotateAsync(mat, cv4.ROTATE_90_COUNTERCLOCKWISE, dst: mat);
+    }
+    final (frame, debugImage) = await detectDocumentEdges(
+      mat,
+      debugStage: debugStage,
+    );
+    if (frame == null) {
+      debugImage?.dispose();
+    } else {
+      onFrameDetected(
+        frame,
+        Size(mat.cols.toDouble(), mat.rows.toDouble()),
+        debugImage,
+      );
+    }
+  } finally {
+    mat.dispose();
   }
 }
 
 /// Shared recognition for the camera isolate and captured images.
 Future<(DocumentFrame?, ui.Image?)> detectDocumentEdges(
   cv4.Mat mat, {
-  EdgeDetectionConfig config = EdgeDetectionConfig.fast,
+  EdgeDetectionConfig config = EdgeDetectionConfig.fourPoint,
   DebugStage debugStage = DebugStage.none,
-}) => detectRankedDocument(mat, config, debugStage);
+  List<ui.Offset>? previousCorners,
+}) => detectRankedDocument(
+  mat,
+  config,
+  debugStage,
+  previousCorners: previousCorners,
+);

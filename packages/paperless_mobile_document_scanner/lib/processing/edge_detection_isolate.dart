@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:opencv_dart/opencv_dart.dart' as cv4;
 import 'package:paperless_mobile_document_scanner/models/document_frame.dart';
 import 'package:paperless_mobile_document_scanner/processing/detect_edges.dart';
+import 'package:paperless_mobile_document_scanner/processing/ranked_document_detector.dart';
 
 /// Result from background edge detection.
 sealed class DetectionOutcome {}
@@ -46,11 +47,13 @@ class EdgeDetectionRunner {
   /// Returns `null` when the previous frame is still being processed
   /// (frame skipping — caller should ignore). Otherwise returns a
   /// [DetectionOutcome] indicating found or not-found.
+  /// [rgbaBytes] accepts packed RGBA (default) or luminance ([channels] = 1).
   Future<DetectionOutcome?> detect({
     required Uint8List rgbaBytes,
     required int width,
     required int height,
     required int rotationCompensation,
+    int channels = 4,
   }) async {
     if (_isProcessing) return null;
     await _initCompleter.future;
@@ -65,6 +68,7 @@ class EdgeDetectionRunner {
         height,
         rotationCompensation,
         replyPort.sendPort,
+        channels,
       ]);
 
       final result = await replyPort.first;
@@ -100,6 +104,8 @@ class EdgeDetectionRunner {
   static void _workerEntryPoint(SendPort mainSendPort) {
     final workerReceivePort = ReceivePort();
     mainSendPort.send(workerReceivePort.sendPort);
+    List<Offset>? previousCorners;
+    (int, int, int)? previousGeometry;
 
     workerReceivePort.listen((message) async {
       final msg = message as List;
@@ -108,6 +114,11 @@ class EdgeDetectionRunner {
       final int height = msg[2];
       final int rotationCompensation = msg[3];
       final SendPort replyPort = msg[4];
+      final int channels = msg[5];
+
+      final geometry = (width, height, rotationCompensation);
+      if (previousGeometry != geometry) previousCorners = null;
+      previousGeometry = geometry;
 
       try {
         final result = await _processFrame(
@@ -115,9 +126,34 @@ class EdgeDetectionRunner {
           width,
           height,
           rotationCompensation,
+          previousCorners,
+          channels,
         );
+        if (result == null) {
+          previousCorners = null;
+        } else {
+          final detected = [
+            for (var i = 2; i < 10; i += 2)
+              Offset(
+                result[i] / (result[0] - 1),
+                result[i + 1] / (result[1] - 1),
+              ),
+          ];
+          final previous = previousCorners;
+          // Retain the original recognizer's ranking reference, independently
+          // of alpha2's overlay smoothing and auto-capture tracker.
+          previousCorners =
+              previous == null ||
+                  documentCornerDistance(previous, detected) > .12
+              ? detected
+              : List.generate(
+                  4,
+                  (i) => Offset.lerp(previous[i], detected[i], .45)!,
+                );
+        }
         replyPort.send(result);
       } catch (_) {
+        previousCorners = null;
         replyPort.send(null);
       }
     });
@@ -128,43 +164,57 @@ class EdgeDetectionRunner {
     int width,
     int height,
     int rotationCompensation,
+    List<Offset>? previousCorners,
+    int channels,
   ) async {
+    if ((channels != 1 && channels != 4) ||
+        width < 3 ||
+        height < 3 ||
+        rgbaBytes.length != width * height * channels) {
+      return null;
+    }
     cv4.Mat mat = cv4.Mat.fromList(
       height,
       width,
-      cv4.MatType.CV_8UC4,
+      channels == 1 ? cv4.MatType.CV_8UC1 : cv4.MatType.CV_8UC4,
       rgbaBytes,
     );
 
-    switch (rotationCompensation) {
-      case 90:
-        await cv4.rotateAsync(mat, cv4.ROTATE_90_CLOCKWISE, dst: mat);
-        break;
-      case 180:
-        await cv4.rotateAsync(mat, cv4.ROTATE_180, dst: mat);
-        break;
-      case 270:
-        await cv4.rotateAsync(mat, cv4.ROTATE_90_COUNTERCLOCKWISE, dst: mat);
-        break;
+    try {
+      switch (rotationCompensation) {
+        case 90:
+          await cv4.rotateAsync(mat, cv4.ROTATE_90_CLOCKWISE, dst: mat);
+          break;
+        case 180:
+          await cv4.rotateAsync(mat, cv4.ROTATE_180, dst: mat);
+          break;
+        case 270:
+          await cv4.rotateAsync(mat, cv4.ROTATE_90_COUNTERCLOCKWISE, dst: mat);
+          break;
+      }
+
+      final (frame, _) = await detectDocumentEdges(
+        mat,
+        previousCorners: previousCorners,
+      );
+      final imgW = mat.cols.toDouble();
+      final imgH = mat.rows.toDouble();
+
+      if (frame == null) return null;
+      return [
+        imgW,
+        imgH,
+        frame.topLeft.dx,
+        frame.topLeft.dy,
+        frame.topRight.dx,
+        frame.topRight.dy,
+        frame.bottomRight.dx,
+        frame.bottomRight.dy,
+        frame.bottomLeft.dx,
+        frame.bottomLeft.dy,
+      ];
+    } finally {
+      mat.dispose();
     }
-
-    final (frame, _) = await detectDocumentEdges(mat);
-    final imgW = mat.cols.toDouble();
-    final imgH = mat.rows.toDouble();
-    mat.dispose();
-
-    if (frame == null) return null;
-    return [
-      imgW,
-      imgH,
-      frame.topLeft.dx,
-      frame.topLeft.dy,
-      frame.topRight.dx,
-      frame.topRight.dy,
-      frame.bottomRight.dx,
-      frame.bottomRight.dy,
-      frame.bottomLeft.dx,
-      frame.bottomLeft.dy,
-    ];
   }
 }

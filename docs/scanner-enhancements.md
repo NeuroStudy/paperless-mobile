@@ -16,7 +16,7 @@ development changes remain on `codex/scan-enhancement-v4-backup` at `4e2f3cd9`.
 ## Scope
 
 The scanner retains alpha2's standalone package, camera controller and preview,
-camera resolution and controls, stream conversion and orientation, capture flow,
+camera resolution and controls, orientation, capture flow,
 auto-capture timing and tracker, countdown, vibration, spirit level and rectangle
 painters. The scanner screen and crop adjustment layout are unchanged. The later
 upstream scanner reorganization, settings screen and PDF viewer replacement are
@@ -24,11 +24,23 @@ not included. The existing GPL license files and attribution are retained.
 
 Only recognition and enhancement are adapted from the preserved implementation:
 
-- The shared live/still detector combines gradient-adaptive Canny edges and Otsu
-  paper proposals, bounded contour ranking, multiple polygon approximations,
-  edge-support scoring and convex geometry checks. It retains alpha2's fast and
-  accurate presets and returns its absolute image coordinates. Existing smoothing
-  and auto capture receive the improved corners; the overlay remains alpha2's.
+- The shared live/still detector follows the preserved native four-point
+  algorithm: up to 960px analysis, Gaussian 5 smoothing, gradient-adaptive Canny
+  and Otsu proposals, a 3x3 close without added dilation/padding, a 6%-97% contour
+  area range, bounded contour ranking, the original polygon approximations,
+  edge-support scoring and convex geometry checks. It returns alpha2's absolute
+  image coordinates. Explicit legacy fast/accurate presets remain available;
+  the default is `EdgeDetectionConfig.fourPoint`.
+- Live ranking retains the native previous-corner agreement weight and its
+  ranking reference smoothing. It resets on loss or changed frame geometry and
+  does not lock onto a document after movement. This is separate from alpha2's
+  unchanged overlay smoothing, capture tracker, timing and rectangle painter.
+  The older native behavior that hid corners after stability is excluded.
+- Android analysis copies the Y plane directly with row/pixel strides, as in the
+  earlier scanner. It avoids full-frame YUV-to-RGBA-to-gray conversion and ignores
+  chroma/padding. The persistent worker accepts both luminance and RGBA input.
+  Camera controls, captured color photographs and their saved enhancement remain
+  unchanged. The scanner-view adapter only forwards the analysis channel count.
 - Enhance uses optimized color correction and shadow reduction. Enhance initially
   stays off. Reduce shadows defaults on and appears while Enhance is enabled.
   Turning it off uses the conservative contrast adjustment.
@@ -87,18 +99,33 @@ crop-analysis invalidation. Fixtures are synthetic; personal images stay local.
 The historical commented-out cubit test has no entry point and is excluded by
 selecting the scanner suite and the existing runnable app test explicitly.
 
-Validated with 17 desktop tests and 12 Android API 36 emulator processing/editor
-tests. Targeted analysis of changed scanner files and tests has no findings.
+The initial alpha2 adaptation passed 17 desktop and 12 Android processing/editor
+tests. The follow-up recognition correction adds independent native-algorithm
+reference cases for steeper skews, rotation, faint edges, clutter and non-documents,
+plus previous-candidate continuity, movement/loss, luminance strides and an actual
+Android camera-frame check. Reference generation is documented in
+`tools/scanner_detection/`. Targeted analysis of changed files has no findings.
+The corrected implementation passes 31 desktop tests and 27 Android API 36
+processing, editor, recognition and camera-input checks. All ten single-image
+comparisons agree with the independent translation of the earlier native
+algorithm; eight of those checks failed before the correction. The live
+luminance case averaged approximately 20ms/frame on the emulator at a 960-pixel
+analysis limit. These are synthetic/debug observations, not phone guarantees.
 Full-app analysis succeeds with `--no-fatal-infos`, reporting 19 pre-existing
 informational lints and no warnings or errors. A source/dependency audit confirms
-the protected camera/settings/layout files and all 279 existing locked packages
-match the tag. The 7.7MP analysis/render case took approximately 1.5 seconds on
+the camera controller, controls/layout/painters, capture settings and the committed
+lockfile's 279 original entries match the tag. The 7.7MP analysis/render case took approximately 1.5 seconds on
 the emulator in debug mode; this is not a physical-device performance guarantee.
 Normal `lib/main.dart` Android debug builds succeed for ARM64 and x86_64.
 
 The Android harness runs these processing/editor cases in the app on a selected
-device. It does not claim real-camera reliability. Camera, capture and lifecycle
-code are intentionally kept byte-for-byte equivalent to the alpha2 tag; physical
+device and an actual camera input frame. It does not claim real-camera accuracy.
+It uses the standard integration driver with a direct VM connection because the
+pinned SDK's DDS startup is intermittent on this Windows host, and `flutter test
+--no-dds` reports a host-side unsupported golden stream despite running the app
+tests successfully. `-DiagnosticOutput` enables verbose runner logs. The harness
+grants camera permission only to the debug test app on the selected device.
+Camera capture settings, controller/lifecycle, controls and layout remain alpha2's; physical
 camera accuracy, interruption/resume, prolonged scanning, preview fit and memory
 behavior still require device verification. An iOS build/runtime check on a Mac
 is required before claiming iOS readiness.

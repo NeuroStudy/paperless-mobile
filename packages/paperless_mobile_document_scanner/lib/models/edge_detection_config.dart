@@ -34,6 +34,10 @@ class EdgeDetectionConfig {
   /// Minimum contour area as a fraction of the (resized) image area.
   final double minAreaFactor;
 
+  /// Gaussian smoothing kernel, or zero to retain median smoothing for a
+  /// caller explicitly selecting a legacy preset.
+  final int gaussianBlurKernel;
+
   const EdgeDetectionConfig({
     required this.resizeThreshold,
     this.borderSize = 10,
@@ -42,7 +46,20 @@ class EdgeDetectionConfig {
     this.morphologyKernel = 4,
     this.dilateKernel = 3,
     this.minAreaFactor = 0.04,
+    this.gaussianBlurKernel = 0,
   });
+
+  /// Parameters from our original native four-point recognizer. This only
+  /// controls image analysis; it does not change camera capture resolution.
+  static const fourPoint = EdgeDetectionConfig(
+    resizeThreshold: 960,
+    borderSize: 0,
+    gaussianBlurKernel: 5,
+    approxEpsilonFactor: 0.015,
+    morphologyKernel: 3,
+    dilateKernel: 1,
+    minAreaFactor: 0.06,
+  );
 
   /// Fast preset: tuned for live preview.
   ///

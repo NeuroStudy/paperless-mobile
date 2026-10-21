@@ -7,12 +7,14 @@ import 'package:paperless_mobile_document_scanner/models/document_frame.dart';
 import 'package:paperless_mobile_document_scanner/models/edge_detection_config.dart';
 import 'package:paperless_mobile_document_scanner/utils/utils.dart';
 
-/// Stateless recognition: v5 owns smoothing, stability and auto capture.
+/// Port of the preserved native PaperProcessor four-point recognizer.
+/// Previous corners affect candidate ranking only; alpha2 owns auto capture.
 Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
   cv.Mat input,
   EdgeDetectionConfig config,
-  DebugStage debugStage,
-) async {
+  DebugStage debugStage, {
+  List<ui.Offset>? previousCorners,
+}) async {
   final owned = <cv.Mat>[];
   cv.Mat own(cv.Mat mat) {
     owned.add(mat);
@@ -45,7 +47,14 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
         value: cv.Scalar.black,
       ),
     );
-    final blurred = own(cv.medianBlur(padded, config.medianBlurKernel));
+    final blurred = own(
+      config.gaussianBlurKernel > 0
+          ? cv.gaussianBlur(padded, (
+              config.gaussianBlurKernel,
+              config.gaussianBlurKernel,
+            ), 0)
+          : cv.medianBlur(padded, config.medianBlurKernel),
+    );
     final threshold = _gradientThreshold(blurred);
     final edges = own(
       cv.canny(blurred, math.max(8.0, threshold * .4), threshold),
@@ -59,12 +68,14 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
         config.morphologyKernel,
       )),
     );
-    final dilation = own(
-      cv.getStructuringElement(cv.MORPH_RECT, (
-        config.dilateKernel,
-        config.dilateKernel,
-      )),
-    );
+    final dilation = config.dilateKernel > 1
+        ? own(
+            cv.getStructuringElement(cv.MORPH_RECT, (
+              config.dilateKernel,
+              config.dilateKernel,
+            )),
+          )
+        : null;
     final closedEdges = own(cv.morphologyEx(edges, cv.MORPH_CLOSE, kernel));
     final proposals = [
       closedEdges,
@@ -75,7 +86,9 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
     List<ui.Offset>? best;
     final candidates = <List<ui.Offset>>[];
     for (final proposal in proposals) {
-      final expanded = own(cv.dilate(proposal, dilation));
+      final expanded = dilation == null
+          ? proposal
+          : own(cv.dilate(proposal, dilation));
       final (contours, hierarchy) = cv.findContours(
         expanded,
         cv.RETR_LIST,
@@ -100,8 +113,8 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
               final points = orderDocumentCorners([
                 for (final point in approx)
                   ui.Offset(
-                    (point.x - border) / (w - 1),
-                    (point.y - border) / (h - 1),
+                    ((point.x - border) / (w - 1)).clamp(0.0, 1.0),
+                    ((point.y - border) / (h - 1)).clamp(0.0, 1.0),
                   ),
               ]);
               if (!isValidDocumentQuad(points)) continue;
@@ -131,11 +144,17 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
               final area = documentQuadArea(points);
               final rectangularity =
                   math.min(areaFraction, area) / math.max(areaFraction, area);
+              final agreement = previousCorners == null
+                  ? .5
+                  : math.max(
+                      0.0,
+                      1 - documentCornerDistance(previousCorners, points) / .15,
+                    );
               final score =
                   support * .50 +
                   rectangularity * .20 +
                   math.sqrt(area) * .20 +
-                  .05;
+                  agreement * .10;
               candidates.add(pixelPoints);
               if (score > bestScore) {
                 bestScore = score;
@@ -232,6 +251,12 @@ double documentQuadArea(List<ui.Offset> points) {
     area += a.dx * b.dy - b.dx * a.dy;
   }
   return area.abs() / 2;
+}
+
+/// Maximum corner displacement in normalized upright image coordinates.
+double documentCornerDistance(List<ui.Offset> a, List<ui.Offset> b) {
+  if (a.length != 4 || b.length != 4) return double.infinity;
+  return List.generate(4, (i) => (a[i] - b[i]).distance).reduce(math.max);
 }
 
 bool isValidDocumentQuad(List<ui.Offset> points) {
