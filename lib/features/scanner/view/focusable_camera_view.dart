@@ -47,7 +47,10 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
   void dispose() {
     _focusAnimController.dispose();
     WidgetsBinding.instance.removeObserver(this);
-    _controller?.stopImageStream();
+    _controller?.removeListener(_onCameraChanged);
+    if (_controller?.value.isStreamingImages ?? false) {
+      _controller?.stopImageStream();
+    }
     _controller?.dispose();
     super.dispose();
   }
@@ -61,6 +64,7 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
       if (cameraController == null || !cameraController.value.isInitialized) {
         return;
       }
+      cameraController.removeListener(_onCameraChanged);
       if (cameraController.value.isStreamingImages) {
         cameraController.stopImageStream();
       }
@@ -155,18 +159,13 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
     );
     cameraController = _controller!;
     // If the controller is updated then update the UI.
-    cameraController.addListener(() {
-      if (mounted) {
-        setState(() {});
-      }
-      if (cameraController.value.hasError) {
-        debugPrint('Camera error ${cameraController.value.errorDescription}');
-      }
-    });
+    cameraController.addListener(_onCameraChanged);
 
     try {
       await cameraController.initialize();
+      if (!mounted || !identical(_controller, cameraController)) return;
       await cameraController.setFlashMode(FlashMode.off);
+      if (!mounted || !identical(_controller, cameraController)) return;
       widget.onControllerInitialized(cameraController);
     } on CameraException catch (e) {
       switch (e.code) {
@@ -200,6 +199,15 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
 
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  void _onCameraChanged() {
+    final controller = _controller;
+    if (!mounted || controller == null) return;
+    setState(() {});
+    if (controller.value.hasError) {
+      debugPrint('Camera error ${controller.value.errorDescription}');
     }
   }
 

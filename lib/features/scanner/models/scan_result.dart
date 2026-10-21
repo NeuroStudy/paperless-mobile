@@ -34,6 +34,9 @@ class ScanResult {
   /// Whether auto-enhance was applied.
   final bool enhanced;
 
+  /// Shadow correction is applied only while enhancement is enabled.
+  final bool reduceShadows;
+
   const ScanResult({
     required this.originalFileName,
     required this.editedFileName,
@@ -43,6 +46,7 @@ class ScanResult {
     required this.colorFilter,
     required this.bwThreshold,
     required this.enhanced,
+    this.reduceShadows = true,
   });
 
   double get originalImageWidth => originalImageSize.width;
@@ -58,6 +62,7 @@ class ScanResult {
     ScanColorFilter? colorFilter,
     double? bwThreshold,
     bool? enhanced,
+    bool? reduceShadows,
   }) {
     return ScanResult(
       originalFileName: originalFileName ?? this.originalFileName,
@@ -68,6 +73,7 @@ class ScanResult {
       colorFilter: colorFilter ?? this.colorFilter,
       bwThreshold: bwThreshold ?? this.bwThreshold,
       enhanced: enhanced ?? this.enhanced,
+      reduceShadows: reduceShadows ?? this.reduceShadows,
     );
   }
 
@@ -82,6 +88,7 @@ class ScanResult {
       'colorFilter': colorFilter.name,
       'bwThreshold': bwThreshold,
       'enhanced': enhanced,
+      'reduceShadows': reduceShadows,
     };
   }
 
@@ -106,6 +113,7 @@ class ScanResult {
       ),
       bwThreshold: (json['bwThreshold'] as num?)?.toDouble() ?? 10,
       enhanced: json['enhanced'] as bool? ?? false,
+      reduceShadows: json['reduceShadows'] as bool? ?? true,
     );
   }
 

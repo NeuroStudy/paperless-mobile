@@ -2,6 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:paperless_mobile/generated/l10n/app_localizations.dart';
+import 'package:paperless_mobile/helpers/message_helpers.dart';
+import 'package:paperless_mobile/features/scanner/processing/color_enhancement.dart';
 import 'package:paperless_mobile/features/scanner/models/document_frame.dart';
 import 'package:paperless_mobile/features/scanner/models/scan_result.dart';
 import 'package:paperless_mobile/features/scanner/processing/image_edit.dart';
@@ -15,6 +18,7 @@ class ImageEditResult {
   final ScanColorFilter colorFilter;
   final double bwThreshold;
   final bool enhanced;
+  final bool reduceShadows;
   final Uint8List editedBytes;
 
   ImageEditResult({
@@ -23,6 +27,7 @@ class ImageEditResult {
     required this.colorFilter,
     required this.bwThreshold,
     required this.enhanced,
+    this.reduceShadows = true,
     required this.editedBytes,
   });
 }
@@ -64,6 +69,7 @@ class ImageEditView extends StatefulWidget {
 
   /// Whether auto-enhance is initially enabled.
   final bool initialEnhanced;
+  final bool initialReduceShadows;
 
   /// Whether to play the entry animation (scale + opacity).
   final bool animateEntry;
@@ -88,6 +94,7 @@ class ImageEditView extends StatefulWidget {
     this.initialColorFilter = ScanColorFilter.none,
     this.initialBwThreshold = 10,
     this.initialEnhanced = false,
+    this.initialReduceShadows = true,
     this.animateEntry = false,
     required this.onConfirmed,
     required this.onCancelled,
@@ -111,12 +118,16 @@ class _ImageEditViewState extends State<ImageEditView>
   late double _bwThreshold;
   late int _quarterTurns;
   late bool _enhanced;
+  late bool _reduceShadows;
+  Future<EnhancementProfile>? _enhancementProfile;
   bool _processing = false;
+  bool _renderFailed = false;
   bool _loading = false;
 
   // Pinch-to-zoom & double-tap-to-reset.
   final TransformationController _transformController =
       TransformationController();
+  final ScrollController _editControlsScrollController = ScrollController();
 
   // Entry animation (only when animateEntry is true).
   AnimationController? _animController;
@@ -131,6 +142,7 @@ class _ImageEditViewState extends State<ImageEditView>
     _colorFilter = widget.initialColorFilter;
     _bwThreshold = widget.initialBwThreshold;
     _enhanced = widget.initialEnhanced;
+    _reduceShadows = widget.initialReduceShadows;
 
     if (widget.originalImageBytes != null) {
       // New capture — bytes already available.
@@ -215,8 +227,10 @@ class _ImageEditViewState extends State<ImageEditView>
 
   @override
   void dispose() {
+    _enhancementProfile = null;
     _animController?.dispose();
     _transformController.dispose();
+    _editControlsScrollController.dispose();
     super.dispose();
   }
 
@@ -226,14 +240,24 @@ class _ImageEditViewState extends State<ImageEditView>
 
   Future<void> _applyEdits() async {
     if (_processing || _croppedBytes == null) return;
-    setState(() => _processing = true);
+    setState(() {
+      _processing = true;
+      _renderFailed = false;
+    });
 
     try {
       // Always start from the cropped bytes to avoid compounding quality loss.
       Uint8List result = _croppedBytes!;
 
       if (_enhanced) {
-        result = await autoEnhance(result);
+        final profile = _reduceShadows
+            ? await (_enhancementProfile ??= analyzeEnhancement(result))
+            : null;
+        result = await autoEnhance(
+          result,
+          reduceShadows: _reduceShadows,
+          profile: profile,
+        );
       }
 
       if (_quarterTurns % 4 != 0) {
@@ -257,31 +281,43 @@ class _ImageEditViewState extends State<ImageEditView>
       }
     } catch (e) {
       debugPrint('Image edit failed: $e');
-      if (mounted) setState(() => _processing = false);
+      _enhancementProfile = null;
+      if (mounted) {
+        setState(() {
+          _processing = false;
+          _renderFailed = true;
+        });
+        showGenericError(context, e);
+      }
     }
   }
 
   void _rotateClockwise() {
+    if (_processing || _loading) return;
     _quarterTurns = (_quarterTurns + 1) % 4;
     _applyEdits();
   }
 
   void _rotateCounterClockwise() {
+    if (_processing || _loading) return;
     _quarterTurns = (_quarterTurns + 3) % 4; // +3 ≡ -1 mod 4
     _applyEdits();
   }
 
   void _setColorFilter(ScanColorFilter filter) {
+    if (_processing || _loading) return;
     _colorFilter = _colorFilter == filter ? ScanColorFilter.none : filter;
     _applyEdits();
   }
 
   void _toggleEnhance() {
+    if (_processing || _loading) return;
     _enhanced = !_enhanced;
     _applyEdits();
   }
 
   Future<void> _onCropPressed() async {
+    if (_processing || _loading) return;
     if (_originalBytes == null) return;
     final result = await Navigator.of(context).push<(Uint8List, DocumentFrame)>(
       MaterialPageRoute(
@@ -301,6 +337,7 @@ class _ImageEditViewState extends State<ImageEditView>
 
     if (result != null && mounted) {
       setState(() {
+        _enhancementProfile = null;
         _croppedBytes = result.$1;
         _cropFrame = result.$2;
       });
@@ -309,7 +346,7 @@ class _ImageEditViewState extends State<ImageEditView>
   }
 
   void _onDone() {
-    if (_displayBytes == null) return;
+    if (_displayBytes == null || _renderFailed || _processing) return;
     widget.onConfirmed(
       ImageEditResult(
         cropFrame: _cropFrame,
@@ -317,6 +354,7 @@ class _ImageEditViewState extends State<ImageEditView>
         colorFilter: _colorFilter,
         bwThreshold: _bwThreshold,
         enhanced: _enhanced,
+        reduceShadows: _reduceShadows,
         editedBytes: _displayBytes!,
       ),
     );
@@ -387,7 +425,7 @@ class _ImageEditViewState extends State<ImageEditView>
                     : const Text('Cancel'),
               ),
               FilledButton.icon(
-                onPressed: controlsDisabled ? null : _onDone,
+                onPressed: controlsDisabled || _renderFailed ? null : _onDone,
                 icon: const Icon(Icons.check),
                 label: const Text('Apply'),
               ),
@@ -423,6 +461,18 @@ class _ImageEditViewState extends State<ImageEditView>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (_enhanced)
+                    SwitchListTile.adaptive(
+                      title: Text(S.of(context)!.reduceShadows),
+                      value: _reduceShadows,
+                      onChanged: controlsDisabled
+                          ? null
+                          : (value) {
+                              if (_processing || _loading) return;
+                              setState(() => _reduceShadows = value);
+                              _applyEdits();
+                            },
+                    ),
                   if (_colorFilter == ScanColorFilter.blackAndWhite)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -443,6 +493,7 @@ class _ImageEditViewState extends State<ImageEditView>
                               onChanged: _processing
                                   ? null
                                   : (value) {
+                                      if (_processing || _loading) return;
                                       setState(() => _bwThreshold = value);
                                     },
                               onChangeEnd: _processing
@@ -473,10 +524,12 @@ class _ImageEditViewState extends State<ImageEditView>
                       ),
                     ),
                     child: Scrollbar(
+                      controller: _editControlsScrollController,
                       interactive: false,
                       thumbVisibility: true,
                       radius: const Radius.circular(2),
                       child: SingleChildScrollView(
+                        controller: _editControlsScrollController,
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           mainAxisSize: MainAxisSize.max,

@@ -1,4 +1,5 @@
 {
+  "reduceShadows": "Schatten reduzieren",
   "aboutThisApp": "Über diese App",
   "@aboutThisApp": {
     "description": "Label for about this app tile displayed in the drawer"

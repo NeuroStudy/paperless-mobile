@@ -256,7 +256,7 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
       );
 
       // null means skipped (still processing) — don't count.
-      if (outcome == null) return;
+      if (!mounted || outcome == null) return;
 
       switch (outcome) {
         case FrameDetected(:final frame, :final imageSize):
@@ -285,6 +285,10 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
     Size imageSize,
     ui.Image? debugImage,
   ) async {
+    if (!mounted) {
+      debugImage?.dispose();
+      return;
+    }
     _debugUiImage?.dispose();
     _debugUiImage = debugImage;
 

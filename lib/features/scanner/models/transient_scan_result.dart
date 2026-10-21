@@ -46,6 +46,12 @@ class TransientScanResult {
     _scanResult = _scanResult.copyWith(bwThreshold: value);
   }
 
+  bool get reduceShadows => _scanResult.reduceShadows;
+
+  set reduceShadows(bool value) {
+    _scanResult = _scanResult.copyWith(reduceShadows: value);
+  }
+
   bool get enhanced => _scanResult.enhanced;
 
   set enhanced(bool value) {
