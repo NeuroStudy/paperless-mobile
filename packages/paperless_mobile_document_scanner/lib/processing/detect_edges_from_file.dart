@@ -16,15 +16,21 @@ Future<DocumentFrame?> detectEdgesFromImageBytes(
   EdgeDetectionConfig config = EdgeDetectionConfig.accurate,
 }) async {
   final mat = cv4.imdecode(imageBytes, cv4.IMREAD_COLOR);
-  if (mat.isEmpty) return null;
-
-  // Convert to RGBA (format expected by detectDocumentEdges).
-  final rgba = await cv4.cvtColorAsync(mat, cv4.COLOR_BGR2RGBA);
-  mat.dispose();
-
-  final (frame, debugImage) = await detectDocumentEdges(rgba, config: config);
-  debugImage?.dispose();
-  rgba.dispose();
-
-  return frame;
+  try {
+    if (mat.isEmpty) return null;
+    // Convert to RGBA (format expected by detectDocumentEdges).
+    final rgba = await cv4.cvtColorAsync(mat, cv4.COLOR_BGR2RGBA);
+    try {
+      final (frame, debugImage) = await detectDocumentEdges(
+        rgba,
+        config: config,
+      );
+      debugImage?.dispose();
+      return frame;
+    } finally {
+      rgba.dispose();
+    }
+  } finally {
+    mat.dispose();
+  }
 }

@@ -249,6 +249,7 @@ class _PaperlessMobileDocumentScannerState
       existing.colorFilter = result.colorFilter;
       existing.bwThreshold = result.bwThreshold;
       existing.enhanced = result.enhanced;
+      existing.reduceShadows = result.reduceShadows;
       existing.thumbnailBytes = thumbnail;
     } else {
       // New scan: write the output file and create a ScanResult.
@@ -262,6 +263,7 @@ class _PaperlessMobileDocumentScannerState
           colorFilter: result.colorFilter,
           bwThreshold: result.bwThreshold,
           enhanced: result.enhanced,
+          reduceShadows: result.reduceShadows,
           thumbnailBytes: thumbnail,
           outputFile: scanFile,
         ),
@@ -361,6 +363,7 @@ class _PaperlessMobileDocumentScannerState
         initialColorFilter: scan.colorFilter,
         initialBwThreshold: scan.bwThreshold,
         initialEnhanced: scan.enhanced,
+        initialReduceShadows: scan.reduceShadows,
         onConfirmed: _onImageEditConfirmed,
         onCancelled: _onImageEditCancelled,
         isNewCapture: false,

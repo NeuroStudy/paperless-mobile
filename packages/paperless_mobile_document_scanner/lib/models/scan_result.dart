@@ -33,6 +33,9 @@ class ScanResult {
   /// Whether auto-enhance was applied.
   bool enhanced;
 
+  /// Whether enhancement reduces shadows. Older callers retain the default.
+  bool reduceShadows;
+
   /// A small thumbnail of the final edited image (kept in memory for the
   /// preview list).
   Uint8List thumbnailBytes;
@@ -48,6 +51,7 @@ class ScanResult {
     required this.colorFilter,
     required this.bwThreshold,
     required this.enhanced,
+    this.reduceShadows = true,
     required this.thumbnailBytes,
     required this.outputFile,
   });

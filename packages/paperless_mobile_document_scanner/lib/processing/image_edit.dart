@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:opencv_dart/opencv_dart.dart' as cv4;
+import 'color_enhancement.dart';
 
 /// Rotates [imageBytes] (PNG) by [quarterTurns] × 90° clockwise.
 ///
@@ -71,43 +72,13 @@ Future<Uint8List> toBlackAndWhite(
   return encoded.$2;
 }
 
-/// Enhances a document image for improved text readability.
-///
-/// Pipeline optimised for black text on white/light backgrounds:
-///   1. Light bilateral filter to reduce camera noise while preserving
-///      text edges.
-///   2. Aggressive unsharp-mask sharpening (matching GIMP's enhance filter
-///      with radius ≈ 6.8, amount ≈ 2.69, threshold 0) to make text
-///      strokes crisp.
-///
-/// Returns the enhanced image as PNG-encoded bytes.
-Future<Uint8List> autoEnhance(Uint8List imageBytes) async {
-  final mat = cv4.imdecode(imageBytes, cv4.IMREAD_COLOR);
-
-  // 1. Light denoising — bilateral filter keeps text edges sharp while
-  //    smoothing camera sensor noise in flat areas (paper background).
-  final denoised = await cv4.bilateralFilterAsync(mat, 5, 40, 40);
-  mat.dispose();
-
-  // 2. Unsharp mask — GIMP-style: result = src + amount * (src - blur).
-  //    Equivalent to addWeighted(src, 1+amount, blur, -amount, 0).
-  //    GIMP parameters: radius=6.8 → sigma≈3.4, amount=2.69, threshold=0.
-  //    Kernel size (0,0) lets OpenCV derive it from sigma automatically.
-  final blurred = await cv4.gaussianBlurAsync(denoised, (0, 0), 3.4);
-  final sharpened = await cv4.addWeightedAsync(
-    denoised,
-    3.69, // 1 + amount
-    blurred,
-    -2.69, // -amount
-    0,
-  );
-  denoised.dispose();
-  blurred.dispose();
-
-  final encoded = cv4.imencode('.png', sharpened);
-  sharpened.dispose();
-  return encoded.$2;
-}
+/// Optimized color correction; a crop profile can be reused across edits.
+Future<Uint8List> autoEnhance(
+  Uint8List imageBytes, {
+  bool reduceShadows = true,
+  EnhancementProfile? profile,
+}) =>
+    enhanceDocument(imageBytes, reduceShadows: reduceShadows, profile: profile);
 
 /// Generates a thumbnail of [imageBytes] (PNG) with a maximum dimension of
 /// [maxDimension] pixels (preserving the aspect ratio).
