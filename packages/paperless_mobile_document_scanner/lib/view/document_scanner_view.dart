@@ -86,6 +86,8 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
   late AnimationController _autoCaptureAnimController;
   bool _autoCaptureTriggered = false;
   bool _isAutoCaptureVibrating = false;
+  bool _disposed = false;
+  int _streamGeneration = 0;
 
   @override
   void initState() {
@@ -121,6 +123,9 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
 
   @override
   void dispose() {
+    _disposed = true;
+    _streamGeneration++;
+    _controller = null;
     _stopAutoCaptureVibration();
     _debugUiImage?.dispose();
     _runner.dispose();
@@ -205,6 +210,7 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
   }
 
   void _onControllerInitialized(CameraController controller) {
+    if (_disposed || !mounted) return;
     _controller = controller;
     widget.onControllerInitialized(controller);
     if (widget.liveEdgeDetectionEnabled) {
@@ -214,25 +220,40 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
 
   void _startImageStream(CameraController controller) {
     if (controller.value.isStreamingImages) return;
+    final generation = ++_streamGeneration;
+    bool acceptsFrame() =>
+        !_disposed &&
+        mounted &&
+        generation == _streamGeneration &&
+        identical(_controller, controller) &&
+        widget.liveEdgeDetectionEnabled &&
+        controller.value.isStreamingImages;
 
     if (widget.debugStage != DebugStage.none) {
       // Debug mode: process on main isolate to produce debug images.
-      controller.startImageStream(
-        (image) => processImage(
+      controller.startImageStream((image) {
+        if (!acceptsFrame()) return;
+        processImage(
           image,
           widget.camera.sensorOrientation,
           controller.value.deviceOrientation,
           widget.camera.lensDirection,
-          _onFrameReceived,
+          (frame, size, debugImage) {
+            if (!acceptsFrame()) {
+              debugImage?.dispose();
+              return;
+            }
+            _onFrameReceived(frame, size, debugImage);
+          },
           debugStage: widget.debugStage,
-        ),
-      );
+        );
+      });
       return;
     }
 
     // Production mode: offload to background isolate with frame skipping.
     controller.startImageStream((image) async {
-      if (_runner.isProcessing) return;
+      if (!acceptsFrame() || _runner.isProcessing) return;
 
       final prepared = prepareCameraImage(
         image,
@@ -251,7 +272,7 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
       );
 
       // null means skipped (still processing) — don't count.
-      if (outcome == null) return;
+      if (!acceptsFrame() || outcome == null) return;
 
       switch (outcome) {
         case FrameDetected(:final frame, :final imageSize):
@@ -263,6 +284,7 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
   }
 
   void _stopImageStream(CameraController controller) {
+    _streamGeneration++;
     if (!controller.value.isStreamingImages) return;
     controller.stopImageStream();
     setState(() {
@@ -279,7 +301,11 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
     DocumentFrame frame,
     Size imageSize,
     ui.Image? debugImage,
-  ) async {
+  ) {
+    if (_disposed || !mounted) {
+      debugImage?.dispose();
+      return;
+    }
     _debugUiImage?.dispose();
     _debugUiImage = debugImage;
 
@@ -306,6 +332,7 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
   }
 
   void _onFrameMissed() {
+    if (_disposed || !mounted) return;
     _recordDetection(false);
     if (!_isFrameStable && _currentFrame != null) {
       _smoothedFrame = null;
@@ -353,6 +380,7 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
   }
 
   void _onAutoCaptureAnimStatus(AnimationStatus status) {
+    if (_disposed || !mounted) return;
     if (status == AnimationStatus.completed && !_autoCaptureTriggered) {
       _stopAutoCaptureVibration();
       HapticFeedback.heavyImpact();

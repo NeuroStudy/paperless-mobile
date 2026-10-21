@@ -40,7 +40,7 @@ Only recognition and enhancement are adapted from the preserved implementation:
   earlier scanner. It avoids full-frame YUV-to-RGBA-to-gray conversion and ignores
   chroma/padding. The persistent worker accepts both luminance and RGBA input.
   Camera controls, captured color photographs and their saved enhancement remain
-  unchanged. The scanner-view adapter only forwards the analysis channel count.
+  unchanged. The scanner-view adapter forwards the analysis channel count.
 - Enhance uses optimized color correction and shadow reduction. Enhance initially
   stays off. Reduce shadows defaults on and appears while Enhance is enabled.
   Turning it off uses the conservative contrast adjustment.
@@ -62,11 +62,25 @@ controller protect preview/save consistency without changing the control layout.
 The only new editor control is Reduce shadows. Its English label follows the
 standalone alpha2 editor's existing labels.
 
+The alpha2 camera teardown also needs lifecycle fixes. It previously stopped an
+already stopped stream after capture, and its controller listener could rebuild
+an element while unmounting. Regression tests reproduce both the `defunct`
+assertion and `No camera is streaming images` exception on the original code.
+The preview now detaches its listener before shutdown, stops only an active
+stream, waits for pending initialization/flash setup before disposing, and waits
+for release before reopening on resume. Late initialization and old stream
+results are ignored. Disposing the detector cancels pending startup/reply waits
+and closes their ports; closing a file-based editor ignores late file/crop work.
+These changes preserve camera resolution, image formats, flash defaults, focus
+and exposure behavior, controls, layout, detection and capture timing.
+
 The app lockfile at the tag omitted four existing scanner dependencies. Their
 entries are completed using the same tag's scanner example lockfile:
 `sensors_plus` 7.0.0, `sensors_plus_platform_interface` 2.0.1, `vibration` 3.1.8,
 `vibration_platform_interface` 0.1.2. Existing camera packages and every other
-locked package version remain unchanged. No dependency manifests are changed.
+locked package version remain unchanged. The scanner's test dependencies also
+declare the already locked `camera_platform_interface` for a controllable native
+host in lifecycle regression tests; runtime dependencies are unchanged.
 
 The reference workbench is retained in `tools/scanner_color/`; its original
 comparison measurements refer to the preserved v4 native implementation.
@@ -105,7 +119,7 @@ reference cases for steeper skews, rotation, faint edges, clutter and non-docume
 plus previous-candidate continuity, movement/loss, luminance strides and an actual
 Android camera-frame check. Reference generation is documented in
 `tools/scanner_detection/`. Targeted analysis of changed files has no findings.
-The corrected implementation passes 31 desktop tests and 27 Android API 36
+The recognition correction passed 31 desktop tests and 27 Android API 36
 processing, editor, recognition and camera-input checks. All ten single-image
 comparisons agree with the independent translation of the earlier native
 algorithm; eight of those checks failed before the correction. The live
@@ -113,7 +127,7 @@ luminance case averaged approximately 20ms/frame on the emulator at a 960-pixel
 analysis limit. These are synthetic/debug observations, not phone guarantees.
 Full-app analysis succeeds with `--no-fatal-infos`, reporting 19 pre-existing
 informational lints and no warnings or errors. A source/dependency audit confirms
-the camera controller, controls/layout/painters, capture settings and the committed
+the camera constructor settings, controls/layout/painters, capture settings and the committed
 lockfile's 279 original entries match the tag. The 7.7MP analysis/render case took approximately 1.5 seconds on
 the emulator in debug mode; this is not a physical-device performance guarantee.
 Normal `lib/main.dart` Android debug builds succeed for ARM64 and x86_64.
@@ -125,7 +139,12 @@ pinned SDK's DDS startup is intermittent on this Windows host, and `flutter test
 --no-dds` reports a host-side unsupported golden stream despite running the app
 tests successfully. `-DiagnosticOutput` enables verbose runner logs. The harness
 grants camera permission only to the debug test app on the selected device.
-Camera capture settings, controller/lifecycle, controls and layout remain alpha2's; physical
-camera accuracy, interruption/resume, prolonged scanning, preview fit and memory
-behavior still require device verification. An iOS build/runtime check on a Mac
-is required before claiming iOS readiness.
+With the lifecycle fixes, the suite passes 42 desktop tests and 32 Android API 36
+checks, including the production capture/editor round trip and worker cancellation.
+Camera capture settings, controls and layout remain alpha2's. Lifecycle regression
+tests cover closing with no stream, after stopping for capture, while streaming,
+during initialization and flash setup, and background/resume with native shutdown
+still pending. Android also exercises the real capture → edit → discard → live
+camera → close flow. Physical camera accuracy, real OS interruptions, prolonged
+scanning, preview fit and memory behavior still require device verification.
+An iOS build/runtime check on a Mac is required before claiming iOS readiness.

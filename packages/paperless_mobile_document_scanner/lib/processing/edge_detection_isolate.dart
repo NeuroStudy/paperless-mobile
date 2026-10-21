@@ -31,15 +31,40 @@ class EdgeDetectionRunner {
   SendPort? _workerSendPort;
   bool _isProcessing = false;
   final _initCompleter = Completer<void>();
+  bool _disposed = false;
+  Future<void>? _startFuture;
+  Completer<SendPort?>? _startupResponse;
+  Completer<Object?>? _pendingResponse;
 
   bool get isProcessing => _isProcessing;
 
   /// Spawns the background isolate. Must be called before [detect].
-  Future<void> start() async {
+  Future<void> start() => _startFuture ??= _startWorker();
+
+  Future<void> _startWorker() async {
+    if (_disposed) return;
     final receivePort = ReceivePort();
-    _isolate = await Isolate.spawn(_workerEntryPoint, receivePort.sendPort);
-    _workerSendPort = await receivePort.first as SendPort;
-    _initCompleter.complete();
+    final response = _startupResponse = Completer<SendPort?>();
+    receivePort.listen((port) {
+      if (!response.isCompleted) response.complete(port as SendPort);
+    });
+    try {
+      final isolate = await Isolate.spawn(
+        _workerEntryPoint,
+        receivePort.sendPort,
+      );
+      if (_disposed) {
+        isolate.kill(priority: Isolate.immediate);
+        return;
+      }
+      _isolate = isolate;
+      final port = await response.future;
+      if (!_disposed) _workerSendPort = port;
+    } finally {
+      receivePort.close();
+      _startupResponse = null;
+      if (!_initCompleter.isCompleted) _initCompleter.complete();
+    }
   }
 
   /// Submits RGBA image data for edge detection.
@@ -55,13 +80,19 @@ class EdgeDetectionRunner {
     required int rotationCompensation,
     int channels = 4,
   }) async {
-    if (_isProcessing) return null;
+    if (_disposed || _isProcessing) return null;
     await _initCompleter.future;
-    if (_workerSendPort == null) return null;
+    if (_disposed || _isProcessing || _workerSendPort == null) {
+      return null;
+    }
 
     _isProcessing = true;
+    final replyPort = ReceivePort();
+    final response = _pendingResponse = Completer<Object?>();
+    replyPort.listen((result) {
+      if (!response.isCompleted) response.complete(result);
+    });
     try {
-      final replyPort = ReceivePort();
       _workerSendPort!.send([
         rgbaBytes,
         width,
@@ -71,8 +102,8 @@ class EdgeDetectionRunner {
         channels,
       ]);
 
-      final result = await replyPort.first;
-      replyPort.close();
+      final result = await response.future;
+      if (_disposed) return null;
 
       if (result == null) return FrameNotFound();
       final data = (result as List).cast<double>();
@@ -87,11 +118,20 @@ class EdgeDetectionRunner {
         Size(data[0], data[1]),
       );
     } finally {
+      replyPort.close();
+      _pendingResponse = null;
       _isProcessing = false;
     }
   }
 
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    final startup = _startupResponse;
+    if (startup != null && !startup.isCompleted) startup.complete(null);
+    final pending = _pendingResponse;
+    if (pending != null && !pending.isCompleted) pending.complete(null);
+    if (!_initCompleter.isCompleted) _initCompleter.complete();
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
     _workerSendPort = null;

@@ -178,10 +178,12 @@ class _ImageEditViewState extends State<ImageEditView>
   Future<void> _loadFromFile() async {
     try {
       final bytes = await widget.originalImageFile!.readAsBytes();
+      if (!mounted) return;
       final cropped = await perspectiveTransform(
         imageBytes: bytes,
         frame: _cropFrame,
       );
+      if (!mounted) return;
       _originalBytes = bytes;
       _croppedBytes = cropped;
 
@@ -219,7 +221,7 @@ class _ImageEditViewState extends State<ImageEditView>
   // -----------------------------------------------------------------------
 
   Future<void> _applyEdits() async {
-    if (_processing || _croppedBytes == null) return;
+    if (!mounted || _processing || _croppedBytes == null) return;
     setState(() {
       _processing = true;
       _renderFailed = false;

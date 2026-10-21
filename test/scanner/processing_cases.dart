@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:io';
 import 'dart:typed_data';
@@ -17,6 +18,14 @@ import 'package:paperless_mobile_document_scanner/processing/image_edit.dart';
 import 'package:paperless_mobile_document_scanner/processing/perspective_transform.dart';
 import 'package:paperless_mobile_document_scanner/view/edge_adjustment_view.dart';
 import 'package:paperless_mobile_document_scanner/view/image_edit_view.dart';
+
+class _DelayedImageFile implements File {
+  final read = Completer<Uint8List>();
+  @override
+  Future<Uint8List> readAsBytes() => read.future;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 image.Image _page() {
   final page = image.Image(width: 600, height: 800);
@@ -399,6 +408,39 @@ void registerProcessingTests() {
     expect(_luma(output, 100, 3000), greaterThan(240));
     debugPrint('7.7MP analysis+render: ${watch.elapsedMilliseconds}ms');
   });
+  testWidgets(
+    'closing a re-edit while its file loads ignores late processing',
+    (tester) async {
+      final file = _DelayedImageFile();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ImageEditView(
+            originalImageFile: file,
+            originalImageSize: const Size(600, 800),
+            initialCropFrame: DocumentFrame(
+              topLeft: Offset.zero,
+              topRight: const Offset(599, 0),
+              bottomRight: const Offset(599, 799),
+              bottomLeft: const Offset(0, 799),
+            ),
+            initialEnhanced: true,
+            onConfirmed: (_) =>
+                fail('A closed editor must not confirm an image.'),
+            onCancelled: () {},
+            isNewCapture: false,
+          ),
+        ),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      file.read.complete(_png(_page()));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('preview defaults shadows on and persists the disabled choice', (
     tester,
   ) async {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -23,6 +24,10 @@ const _focusIndicatorSize = 72.0;
 class _FocusableCameraViewState extends State<FocusableCameraView>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   CameraController? _controller;
+  Future<void>? _controllerInitialization;
+  Future<void> _cameraShutdown = Future<void>.value();
+  bool _cameraActive = true;
+  bool _disposed = false;
 
   late final AnimationController _focusAnimController;
   Offset? _focusPosition;
@@ -36,7 +41,7 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
           vsync: this,
           duration: const Duration(milliseconds: 400),
         )..addStatusListener((status) {
-          if (status == AnimationStatus.completed) {
+          if (!_disposed && mounted && status == AnimationStatus.completed) {
             setState(() => _focusPosition = null);
           }
         });
@@ -45,31 +50,72 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
 
   @override
   void dispose() {
-    _focusAnimController.dispose();
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
-    _controller?.stopImageStream();
-    _controller?.dispose();
+    _releaseCameraController();
+    _focusAnimController.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final cameraController = _controller;
-
+    if (_disposed) return;
     if (state == AppLifecycleState.inactive) {
-      // Nothing to tear down if the controller was never initialized.
-      if (cameraController == null || !cameraController.value.isInitialized) {
-        return;
-      }
-      if (cameraController.value.isStreamingImages) {
-        cameraController.stopImageStream();
-      }
-      cameraController.dispose();
-      _controller = null;
+      _cameraActive = false;
+      _releaseCameraController();
+      setState(() {});
     } else if (state == AppLifecycleState.resumed) {
-      // Re-initialize the controller if it was disposed during inactive.
-      if (cameraController == null) {
-        _initializeCameraController();
+      _cameraActive = true;
+      _initializeCameraController();
+    }
+  }
+
+  bool _isCurrentController(CameraController controller) =>
+      !_disposed &&
+      mounted &&
+      _cameraActive &&
+      identical(_controller, controller);
+
+  void _onCameraChanged() {
+    final controller = _controller;
+    if (controller == null || !_isCurrentController(controller)) return;
+    if (controller.value.hasError) {
+      debugPrint('Camera error ${controller.value.errorDescription}');
+    }
+    setState(() {});
+  }
+
+  void _releaseCameraController() {
+    final controller = _controller;
+    if (controller == null) return;
+    // stopImageStream changes CameraValue synchronously. Detach before calling
+    // it: mounted is still true inside dispose, while the tree is being torn down.
+    controller.removeListener(_onCameraChanged);
+    _controller = null;
+    final initialization = _controllerInitialization;
+    _controllerInitialization = null;
+    _cameraShutdown = _shutdownCamera(controller, initialization);
+    unawaited(_cameraShutdown);
+  }
+
+  Future<void> _shutdownCamera(
+    CameraController controller,
+    Future<void>? initialization,
+  ) async {
+    try {
+      // The plugin's flash setter also notifies after its platform await.
+      // Let initialization finish before disposing its notifier/native camera.
+      await initialization;
+      if (controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+    } on CameraException catch (e) {
+      debugPrint('Camera stream shutdown failed: $e');
+    } finally {
+      try {
+        await controller.dispose();
+      } on CameraException catch (e) {
+        debugPrint('Camera shutdown failed: $e');
       }
     }
   }
@@ -143,8 +189,10 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
   }
 
   Future<void> _initializeCameraController() async {
-    CameraController cameraController;
-    _controller = CameraController(
+    // A resume must wait for the previous camera to release its native resources.
+    await _cameraShutdown;
+    if (_disposed || !mounted || !_cameraActive || _controller != null) return;
+    final cameraController = CameraController(
       widget.camera,
       widget.resolutionPreset,
       enableAudio: false,
@@ -152,20 +200,21 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
           ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
     );
-    cameraController = _controller!;
-    // If the controller is updated then update the UI.
-    cameraController.addListener(() {
-      if (mounted) {
-        setState(() {});
-      }
-      if (cameraController.value.hasError) {
-        debugPrint('Camera error ${cameraController.value.errorDescription}');
-      }
-    });
+    _controller = cameraController;
+    cameraController.addListener(_onCameraChanged);
+    return _controllerInitialization = _configureCameraController(
+      cameraController,
+    );
+  }
 
+  Future<void> _configureCameraController(
+    CameraController cameraController,
+  ) async {
     try {
       await cameraController.initialize();
+      if (!_isCurrentController(cameraController)) return;
       await cameraController.setFlashMode(FlashMode.off);
+      if (!_isCurrentController(cameraController)) return;
       widget.onControllerInitialized(cameraController);
     } on CameraException catch (e) {
       switch (e.code) {
@@ -197,7 +246,7 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
       }
     }
 
-    if (mounted) {
+    if (_isCurrentController(cameraController)) {
       setState(() {});
     }
   }
