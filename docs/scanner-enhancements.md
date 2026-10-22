@@ -16,13 +16,13 @@ development changes remain on `codex/scan-enhancement-v4-backup` at `4e2f3cd9`.
 ## Scan capture quality
 
 The scanner and both camera-view defaults now request
-`ResolutionPreset.ultraHigh` (approximately 3840x2160). The previous scanner
+`ResolutionPreset.veryHigh` (approximately 1920x1080). The previous scanner
 default was `high` (approximately 1280x720), limiting the detail available for
 fine text before cropping or editing. The resolution selector is debug-only,
 so the higher default also applies in release builds.
 
 Explicit resolution overrides remain supported. The camera plugin negotiates a
-supported resolution when 4K is unavailable; the target does not guarantee exact
+supported resolution when 1080p is unavailable; the target does not guarantee exact
 dimensions on every device. Higher-resolution captures can take longer to
 process and produce larger files. Detection/enhancement analysis remains bounded,
 while edits and saved PNGs retain the cropped image resolution. Thumbnails are
@@ -201,3 +201,78 @@ The combined suites pass 64 desktop checks (including the app widget test) and
 49 Android API 36 emulator checks. Full-app analysis with `--no-fatal-infos`
 reports the same 19 existing informational lints, with no warnings or errors.
 A physical A4 comparison from frontal and tilted phone captures is still needed.
+
+## Capture color regression investigation
+
+The S25 Ultra report includes swapped blue/orange lettering, offset colored
+edges, blur and a green left border in the uncropped photo, with Enhance both
+on and off. The crop adjustment screen renders the original camera JPEG before
+OpenCV cropping or enhancement. A fault there therefore requires checking
+capture and decoding before changing geometric correction or enhancement.
+
+Android now requests `ImageFormatGroup.yuv420` for camera analysis, avoiding the
+extra NV21 analysis conversion. Recognition still copies only the Y plane with
+its row/pixel strides. Still captures continue to use CameraX's native JPEG
+output. Explicit resolution overrides and iOS BGRA input remain supported.
+The format change alone does not fix the S25 Ultra's 4K JPEG corruption.
+
+Run the opt-in capture matrix with the phone unlocked, stationary and pointed
+at the same document containing blue/orange text, black fine print and faint
+signatures throughout:
+
+```powershell
+.\scripts\test_scanner_android.ps1 -DeviceId <device-id> -CaptureComparison
+```
+
+The harness captures `high`, `veryHigh`, and `ultraHigh`, each with NV21 and
+YUV420 analysis, using the production stop-stream-then-capture sequence. Each
+case records the requested resolution, actual JPEG/analysis/OpenCV dimensions,
+plane strides and crop corners. The driver records the phone model and Android
+version. It retrieves the untouched JPEG, Flutter-decoded PNG, OpenCV-decoded
+PNG, perspective output and actual editor exports with Enhance off, Enhance
+with shadows, and Enhance without shadows. Exports must equal displayed bytes.
+Files and `report.json` are saved under the ignored
+`build/scanner_capture_diagnostics/<run>/` directory; originals also remain in
+the debug app's cache. Later case failures do not discard earlier artifacts.
+No personal image is committed or uploaded.
+
+Compare each stage at matching scale. Corruption in the untouched JPEG indicates
+capture; clean JPEGs with differing decodes indicate decoding; clean decodes
+with faulty crops indicate transformation. Existing corrupt captures cannot be
+repaired by toggling enhancement. A matrix pass means that all six cases ran,
+not that their visual quality was automatically accepted. The S25 Ultra result
+must show correct colors, aligned colored edges, no green border, sharp text
+and correct page proportions before this device regression is called fixed.
+Physical testing confirmed that only 4K is corrupt, so the scanner and both
+camera-view defaults now use `ResolutionPreset.veryHigh` (1080p). This retains
+2.25 times the pixels of the previous 720p baseline. Explicit 4K overrides remain
+available; there is no model-specific device detection or dependency change.
+
+The new shared 2160x3840 regression fixtures cover PNG/JPEG inputs, blue/orange
+text and fills, neutral left borders, thin black strokes, faint signatures,
+Enhance/shadow choices, recropping, rotation and file-based re-editing. All
+67 desktop tests and 52 Android API 36 emulator checks pass. The emulator's
+camera still falls back to 720x1280, so its camera result cannot establish
+physical 4K capture quality.
+
+The emulator capture matrix also completes all six cases and retrieves all 42
+image artifacts plus the report. Full-app analysis reports the same 19 existing
+informational lints, with no warnings or errors.
+
+The physical S25 Ultra (SM-S938B, Android 16) completed the same matrix with
+actual 720x1280, 1080x1920 and 2160x3840 captures. Both 4K originals contain the
+reported green left stripe, color reversal and offset colored text/signatures;
+both 720p and 1080p originals have correct colors and aligned ink. Pillow,
+Flutter and OpenCV decode each original to identical RGB pixels (mean absolute
+error 0), locating the corruption in native capture before application edits.
+The leftmost eight columns are green in 100% of 4K pixels and 0% of pixels at
+the two lower resolutions. The 1080p perspective/editor exports retain the
+correct blue/orange lettering with Enhance both on and off. Perspective sizing
+and interpolation are unchanged. Private comparison images remain only in the
+ignored local build directory and the debug app's cache.
+
+With the final 1080p default, all 67 desktop tests pass again and all 52 Android
+processing, perspective, recognition, lifecycle/capture and color-quality checks
+pass on the physical S25 Ultra. Its production scanner capture reports
+1080x1920. Analysis of the changed source/test files has no findings. The normal
+debug app is rebuilt and restored after integration runs.

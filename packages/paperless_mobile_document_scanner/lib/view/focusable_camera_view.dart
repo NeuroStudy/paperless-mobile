@@ -11,7 +11,7 @@ class FocusableCameraView extends StatefulWidget {
   const FocusableCameraView({
     super.key,
     required this.camera,
-    this.resolutionPreset = ResolutionPreset.ultraHigh,
+    this.resolutionPreset = ResolutionPreset.veryHigh,
     required this.onControllerInitialized,
   });
 
@@ -196,8 +196,10 @@ class _FocusableCameraViewState extends State<FocusableCameraView>
       widget.camera,
       widget.resolutionPreset,
       enableAudio: false,
+      // Recognition only reads Y. Keep CameraX's native YUV planes instead of
+      // requesting an additional NV21 conversion, especially at 4K resolutions.
       imageFormatGroup: Platform.isAndroid
-          ? ImageFormatGroup.nv21
+          ? ImageFormatGroup.yuv420
           : ImageFormatGroup.bgra8888,
     );
     _controller = cameraController;

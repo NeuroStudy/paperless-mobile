@@ -38,6 +38,8 @@ class PaperlessMobileDocumentScanner extends StatefulWidget {
   final bool liveDetectionInitiallyEnabled;
 
   /// Target capture resolution; devices may fall back if unsupported.
+  /// Defaults to 1080p: 4K native JPEG captures on the S25 Ultra can contain
+  /// corrupted chroma. Explicit resolution overrides remain available.
   final ResolutionPreset resolutionPreset;
 
   /// Configuration for auto-capture behaviour. When enabled, the scanner
@@ -47,7 +49,7 @@ class PaperlessMobileDocumentScanner extends StatefulWidget {
   const PaperlessMobileDocumentScanner({
     super.key,
     this.liveDetectionInitiallyEnabled = true,
-    this.resolutionPreset = ResolutionPreset.ultraHigh,
+    this.resolutionPreset = ResolutionPreset.veryHigh,
     this.autoCaptureConfig = const AutoCaptureConfig(
       enabled: true,
       preStableDelay: Duration(milliseconds: 300),

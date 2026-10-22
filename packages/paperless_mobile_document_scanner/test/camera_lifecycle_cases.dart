@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:camera_platform_interface/camera_platform_interface.dart';
@@ -20,6 +21,7 @@ const _camera = CameraDescription(
 // host. Initialization/flash can finish after the scanner has been unmounted.
 class _CameraHost extends CameraPlatform {
   final calls = <MethodCall>[];
+  ImageFormatGroup? initializedFormat;
   Completer<void>? initializeGate;
   Completer<void>? flashGate;
   Completer<void>? disposeGate;
@@ -70,6 +72,7 @@ class _CameraHost extends CameraPlatform {
     ImageFormatGroup imageFormatGroup = ImageFormatGroup.unknown,
   }) async {
     calls.add(MethodCall('initialize', cameraId));
+    initializedFormat = imageFormatGroup;
     await initializeGate?.future;
     _initialized.add(
       CameraInitializedEvent(
@@ -150,18 +153,18 @@ void registerCameraLifecycleTests() {
         onCancelled: (_) {},
         onDone: (_) {},
       ),
-      ResolutionPreset.ultraHigh,
+      ResolutionPreset.veryHigh,
     ),
     (
       'scanner override',
       PaperlessMobileDocumentScanner(
-        resolutionPreset: ResolutionPreset.high,
+        resolutionPreset: ResolutionPreset.ultraHigh,
         liveDetectionInitiallyEnabled: false,
         autoCaptureConfig: const AutoCaptureConfig(enabled: false),
         onCancelled: (_) {},
         onDone: (_) {},
       ),
-      ResolutionPreset.high,
+      ResolutionPreset.ultraHigh,
     ),
     (
       'document view default',
@@ -171,7 +174,7 @@ void registerCameraLifecycleTests() {
         onControllerInitialized: (_) {},
         onAutoCaptureTriggered: (_) {},
       ),
-      ResolutionPreset.ultraHigh,
+      ResolutionPreset.veryHigh,
     ),
     (
       'document view override',
@@ -187,7 +190,7 @@ void registerCameraLifecycleTests() {
     (
       'focusable view default',
       FocusableCameraView(camera: _camera, onControllerInitialized: (_) {}),
-      ResolutionPreset.ultraHigh,
+      ResolutionPreset.veryHigh,
     ),
     (
       'focusable view override',
@@ -209,6 +212,12 @@ void registerCameraLifecycleTests() {
               as MediaSettings;
       expect(settings.resolutionPreset, expected);
       expect(settings.enableAudio, isFalse);
+      expect(
+        host.initializedFormat,
+        Platform.isAndroid
+            ? ImageFormatGroup.yuv420
+            : ImageFormatGroup.bgra8888,
+      );
       expect(find.byType(CameraPreview), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       await _flush(tester);

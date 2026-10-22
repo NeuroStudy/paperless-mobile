@@ -42,7 +42,14 @@ void registerCameraInputTest() {
             .widget<CameraPreview>(find.byType(CameraPreview))
             .controller
             .resolutionPreset,
-        ResolutionPreset.ultraHigh,
+        ResolutionPreset.veryHigh,
+      );
+      expect(
+        tester
+            .widget<CameraPreview>(find.byType(CameraPreview))
+            .controller
+            .imageFormatGroup,
+        ImageFormatGroup.yuv420,
       );
       await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.byType(ShutterButton));
@@ -57,7 +64,7 @@ void registerCameraInputTest() {
         editor.originalImageSize,
         Size(original.width.toDouble(), original.height.toDouble()),
       );
-      debugPrint('4K target: captured ${original.width}x${original.height}');
+      debugPrint('1080p target: captured ${original.width}x${original.height}');
       original.dispose();
       await _waitFor(
         tester,
@@ -76,7 +83,7 @@ void registerCameraInputTest() {
     },
   );
 
-  testWidgets('real NV21 camera frames reach luminance recognition', (
+  testWidgets('real YUV420 camera frames reach luminance recognition', (
     tester,
   ) async {
     final cameras = await availableCameras();
@@ -86,9 +93,9 @@ void registerCameraInputTest() {
     // Same capture settings as the production FocusableCameraView.
     final controller = CameraController(
       camera,
-      ResolutionPreset.ultraHigh,
+      ResolutionPreset.veryHigh,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.nv21,
+      imageFormatGroup: ImageFormatGroup.yuv420,
     );
     final runner = EdgeDetectionRunner();
     try {

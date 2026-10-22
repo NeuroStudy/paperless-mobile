@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$DeviceId,
-    [switch]$DiagnosticOutput
+    [switch]$DiagnosticOutput,
+    [switch]$CaptureComparison
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,15 +24,21 @@ $permissionJob = Start-Job -ArgumentList $adbExecutable, $DeviceId -ScriptBlock 
     }
 }
 Push-Location $projectRoot
+$previousDiagnosticDevice = $env:SCANNER_DIAGNOSTIC_DEVICE_ID
 try {
     # The pinned SDK's `flutter test --no-dds` attempts to subscribe to a DDS-only
     # golden stream. The standard integration driver checks the same test suite
     # directly, avoiding that host-side error and intermittent DDS startup.
     $testArguments = @('drive', '--driver', 'test_driver/scanner.dart', '--target', 'integration_test/scanner_processing_test.dart', '-d', $DeviceId, '--no-pub', '--no-dds')
+    if ($CaptureComparison) {
+        $env:SCANNER_DIAGNOSTIC_DEVICE_ID = $DeviceId
+        $testArguments = @('drive', '--driver', 'test_driver/scanner_capture_diagnostics.dart', '--target', 'integration_test/scanner_capture_diagnostics_test.dart', '-d', $DeviceId, '--no-pub', '--no-dds')
+    }
     if ($DiagnosticOutput) { $testArguments += '--verbose' }
     & $flutterExecutable @testArguments
     $testExitCode = $LASTEXITCODE
 } finally {
+    $env:SCANNER_DIAGNOSTIC_DEVICE_ID = $previousDiagnosticDevice
     Pop-Location
     Stop-Job $permissionJob -ErrorAction SilentlyContinue
     Remove-Job $permissionJob -Force -ErrorAction SilentlyContinue

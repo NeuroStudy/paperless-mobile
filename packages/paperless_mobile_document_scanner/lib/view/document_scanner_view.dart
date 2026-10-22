@@ -41,7 +41,7 @@ class DocumentScannerView extends StatefulWidget {
     super.key,
     required this.camera,
     this.debugStage = DebugStage.none,
-    this.resolutionPreset = ResolutionPreset.ultraHigh,
+    this.resolutionPreset = ResolutionPreset.veryHigh,
     required this.onControllerInitialized,
     this.onFrameChanged,
     required this.liveEdgeDetectionEnabled,

@@ -5,10 +5,12 @@ import '../test/scanner/processing_cases.dart';
 import '../test/scanner/perspective_cases.dart';
 import '../test/scanner/recognition_cases.dart';
 import '../test/scanner/worker_lifecycle_cases.dart';
+import '../test/scanner/capture_quality_cases.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   registerProcessingTests();
+  registerCaptureQualityTests();
   registerPerspectiveTests();
   registerRecognitionTests();
   registerWorkerLifecycleTests();
