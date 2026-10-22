@@ -5,6 +5,9 @@ import 'package:camera_platform_interface/camera_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:paperless_mobile_document_scanner/models/auto_capture_config.dart';
+import 'package:paperless_mobile_document_scanner/paperless_mobile_document_scanner.dart';
+import 'package:paperless_mobile_document_scanner/view/document_scanner_view.dart';
 import 'package:paperless_mobile_document_scanner/view/focusable_camera_view.dart';
 
 const _camera = CameraDescription(
@@ -29,9 +32,28 @@ class _CameraHost extends CameraPlatform {
     final previous = CameraPlatform.instance;
     CameraPlatform.instance = this;
     addTearDown(() => CameraPlatform.instance = previous);
+    // The document preview's spirit level subscribes even without detection.
+    for (final channel in const [
+      MethodChannel('dev.fluttercommunity.plus/sensors/accelerometer'),
+      MethodChannel('dev.fluttercommunity.plus/sensors/method'),
+    ]) {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        channel,
+        (_) async => null,
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          channel,
+          null,
+        );
+      });
+    }
   }
 
   int count(String method) => calls.where((c) => c.method == method).length;
+
+  @override
+  Future<List<CameraDescription>> availableCameras() async => [_camera];
 
   @override
   Future<int> createCameraWithSettings(
@@ -119,6 +141,82 @@ Future<void> _flush(WidgetTester tester) async {
 }
 
 void registerCameraLifecycleTests() {
+  final resolutionCases = <(String, Widget, ResolutionPreset)>[
+    (
+      'scanner default',
+      PaperlessMobileDocumentScanner(
+        liveDetectionInitiallyEnabled: false,
+        autoCaptureConfig: const AutoCaptureConfig(enabled: false),
+        onCancelled: (_) {},
+        onDone: (_) {},
+      ),
+      ResolutionPreset.ultraHigh,
+    ),
+    (
+      'scanner override',
+      PaperlessMobileDocumentScanner(
+        resolutionPreset: ResolutionPreset.high,
+        liveDetectionInitiallyEnabled: false,
+        autoCaptureConfig: const AutoCaptureConfig(enabled: false),
+        onCancelled: (_) {},
+        onDone: (_) {},
+      ),
+      ResolutionPreset.high,
+    ),
+    (
+      'document view default',
+      DocumentScannerView(
+        camera: _camera,
+        liveEdgeDetectionEnabled: false,
+        onControllerInitialized: (_) {},
+        onAutoCaptureTriggered: (_) {},
+      ),
+      ResolutionPreset.ultraHigh,
+    ),
+    (
+      'document view override',
+      DocumentScannerView(
+        camera: _camera,
+        resolutionPreset: ResolutionPreset.high,
+        liveEdgeDetectionEnabled: false,
+        onControllerInitialized: (_) {},
+        onAutoCaptureTriggered: (_) {},
+      ),
+      ResolutionPreset.high,
+    ),
+    (
+      'focusable view default',
+      FocusableCameraView(camera: _camera, onControllerInitialized: (_) {}),
+      ResolutionPreset.ultraHigh,
+    ),
+    (
+      'focusable view override',
+      FocusableCameraView(
+        camera: _camera,
+        resolutionPreset: ResolutionPreset.high,
+        onControllerInitialized: (_) {},
+      ),
+      ResolutionPreset.high,
+    ),
+  ];
+  for (final (label, view, expected) in resolutionCases) {
+    testWidgets('$label reaches the native camera', (tester) async {
+      final host = _CameraHost()..install(tester);
+      await tester.pumpWidget(MaterialApp(home: view));
+      await _flush(tester);
+      final settings =
+          host.calls.singleWhere((c) => c.method == 'create').arguments
+              as MediaSettings;
+      expect(settings.resolutionPreset, expected);
+      expect(settings.enableAudio, isFalse);
+      expect(find.byType(CameraPreview), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _flush(tester);
+      expect(host.count('dispose'), 1);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('closing an initialized preview without a stream is safe', (
     tester,
   ) async {

@@ -11,7 +11,7 @@ class FocusableCameraView extends StatefulWidget {
   const FocusableCameraView({
     super.key,
     required this.camera,
-    this.resolutionPreset = ResolutionPreset.medium,
+    this.resolutionPreset = ResolutionPreset.ultraHigh,
     required this.onControllerInitialized,
   });
 

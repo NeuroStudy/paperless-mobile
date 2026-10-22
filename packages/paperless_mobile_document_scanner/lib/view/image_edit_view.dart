@@ -91,7 +91,7 @@ class ImageEditView extends StatefulWidget {
     this.initialQuarterTurns = 0,
     this.initialColorFilter = ScanColorFilter.none,
     this.initialBwThreshold = 10,
-    this.initialEnhanced = false,
+    this.initialEnhanced = true,
     this.initialReduceShadows = true,
     this.animateEntry = false,
     required this.onConfirmed,
@@ -438,6 +438,29 @@ class _ImageEditViewState extends State<ImageEditView>
                   ),
                   if (_processing)
                     const CircularProgressIndicator(color: Colors.white),
+                  if (_enhanced)
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: 16,
+                      child: Material(
+                        color: theme.colorScheme.surfaceContainerHigh
+                            .withValues(alpha: 0.94),
+                        borderRadius: BorderRadius.circular(12),
+                        clipBehavior: Clip.antiAlias,
+                        child: SwitchListTile.adaptive(
+                          title: const Text('Reduce shadows'),
+                          value: _reduceShadows,
+                          onChanged: controlsDisabled
+                              ? null
+                              : (value) {
+                                  if (_processing || _loading) return;
+                                  setState(() => _reduceShadows = value);
+                                  _applyEdits();
+                                },
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -447,18 +470,6 @@ class _ImageEditViewState extends State<ImageEditView>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_enhanced)
-                    SwitchListTile.adaptive(
-                      title: const Text('Reduce shadows'),
-                      value: _reduceShadows,
-                      onChanged: controlsDisabled
-                          ? null
-                          : (value) {
-                              if (_processing || _loading) return;
-                              setState(() => _reduceShadows = value);
-                              _applyEdits();
-                            },
-                    ),
                   if (_colorFilter == ScanColorFilter.blackAndWhite)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),

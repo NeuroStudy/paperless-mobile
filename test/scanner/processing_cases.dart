@@ -409,6 +409,70 @@ void registerProcessingTests() {
     debugPrint('7.7MP analysis+render: ${watch.elapsedMilliseconds}ms');
   });
   testWidgets(
+    'large cropped edits confirm full-size pixels beside a thumbnail',
+    (tester) async {
+      final source = image.Image(width: 2160, height: 3840);
+      image.fill(source, color: image.ColorRgb8(245, 245, 245));
+      image.drawString(
+        source,
+        'Fine print 0123456789',
+        font: image.arial14,
+        x: 300,
+        y: 400,
+        color: image.ColorRgb8(35, 35, 35),
+      );
+      final original = _png(source);
+      final frame = DocumentFrame(
+        topLeft: const Offset(100, 200),
+        topRight: const Offset(2060, 200),
+        bottomRight: const Offset(2060, 3640),
+        bottomLeft: const Offset(100, 3640),
+      );
+      final cropped = (await tester.runAsync(
+        () => perspectiveTransform(imageBytes: original, frame: frame),
+      ))!;
+      ImageEditResult? confirmed;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ImageEditView(
+            originalImageBytes: original,
+            originalImageSize: const Size(2160, 3840),
+            initialCropFrame: frame,
+            initialCroppedBytes: cropped,
+            initialEnhanced: true,
+            initialQuarterTurns: 1,
+            initialColorFilter: ScanColorFilter.greyscale,
+            onConfirmed: (result) => confirmed = result,
+            onCancelled: () {},
+            isNewCapture: true,
+          ),
+        ),
+      );
+      await _waitForProcessing(tester);
+      final preview =
+          tester.widget<Image>(find.byType(Image)).image as MemoryImage;
+      await tester.tap(find.text('Apply'));
+      expect(confirmed!.editedBytes, preview.bytes);
+      final result = confirmed!;
+      final thumbnail = (await tester.runAsync(
+        () => generateThumbnail(result.editedBytes),
+      ))!;
+      final small = image.decodePng(thumbnail)!;
+      expect(math.max(small.width, small.height), 200);
+      final rendered = image.decodePng(result.editedBytes)!;
+      expect((rendered.width, rendered.height), (3440, 1960));
+      expect(rendered.numChannels, 1);
+      // The 14px text must remain visible after crop, enhancement and rotation.
+      expect(_darkest(rendered, 3200, 195, 3250, 365), lessThan(100));
+      expect(result.editedBytes, preview.bytes);
+      expect(
+        (image.decodePng(original)!.width, image.decodePng(original)!.height),
+        (2160, 3840),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+  testWidgets(
     'closing a re-edit while its file loads ignores late processing',
     (tester) async {
       final file = _DelayedImageFile();
@@ -465,11 +529,21 @@ void registerProcessingTests() {
         ),
       ),
     );
+    await _waitForProcessing(tester);
+    expect(
+      tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+      isTrue,
+    );
+    final previewRect = tester.getRect(find.byType(Image));
+    await tester.tap(find.text('Enhance'));
+    await _waitForProcessing(tester);
     expect(find.text('Reduce shadows'), findsNothing);
+    expect(tester.getRect(find.byType(Image)), previewRect);
     await tester.tap(find.text('Enhance'));
     // A second input can arrive before the disabled controls have rebuilt.
     await tester.tap(find.text('Enhance'));
     await _waitForProcessing(tester);
+    expect(tester.getRect(find.byType(Image)), previewRect);
     expect(
       tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
       isTrue,

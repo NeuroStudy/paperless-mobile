@@ -36,6 +36,8 @@ class PaperlessMobileDocumentScanner extends StatefulWidget {
 
   /// Called when the user cancels the scan session.
   final bool liveDetectionInitiallyEnabled;
+
+  /// Target capture resolution; devices may fall back if unsupported.
   final ResolutionPreset resolutionPreset;
 
   /// Configuration for auto-capture behaviour. When enabled, the scanner
@@ -45,7 +47,7 @@ class PaperlessMobileDocumentScanner extends StatefulWidget {
   const PaperlessMobileDocumentScanner({
     super.key,
     this.liveDetectionInitiallyEnabled = true,
-    this.resolutionPreset = ResolutionPreset.high,
+    this.resolutionPreset = ResolutionPreset.ultraHigh,
     this.autoCaptureConfig = const AutoCaptureConfig(
       enabled: true,
       preStableDelay: Duration(milliseconds: 300),

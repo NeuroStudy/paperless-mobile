@@ -37,6 +37,13 @@ void registerCameraInputTest() {
         tester,
         () => find.byType(CameraPreview).evaluate().isNotEmpty,
       );
+      expect(
+        tester
+            .widget<CameraPreview>(find.byType(CameraPreview))
+            .controller
+            .resolutionPreset,
+        ResolutionPreset.ultraHigh,
+      );
       await tester.pump(const Duration(milliseconds: 500));
       await tester.tap(find.byType(ShutterButton));
       await _waitFor(
@@ -44,7 +51,18 @@ void registerCameraInputTest() {
         () => find.byType(ImageEditView).evaluate().isNotEmpty,
       );
       expect(tester.takeException(), isNull);
-      await tester.pump(const Duration(milliseconds: 500));
+      final editor = tester.widget<ImageEditView>(find.byType(ImageEditView));
+      final original = await decodeImageFromList(editor.originalImageBytes!);
+      expect(
+        editor.originalImageSize,
+        Size(original.width.toDouble(), original.height.toDouble()),
+      );
+      debugPrint('4K target: captured ${original.width}x${original.height}');
+      original.dispose();
+      await _waitFor(
+        tester,
+        () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+      );
       await tester.tap(find.text('Discard'));
       await _waitFor(
         tester,
@@ -65,10 +83,10 @@ void registerCameraInputTest() {
     final camera = cameras.firstWhere(
       (c) => c.lensDirection == CameraLensDirection.back,
     );
-    // Same capture settings as alpha2's FocusableCameraView.
+    // Same capture settings as the production FocusableCameraView.
     final controller = CameraController(
       camera,
-      ResolutionPreset.high,
+      ResolutionPreset.ultraHigh,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.nv21,
     );

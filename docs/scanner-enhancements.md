@@ -13,6 +13,26 @@ lockfile change is saved on `codex/scan-enhancement-v5-pre-alpha2-backup` at
 `ee7e030f`. The complete v4 implementation, native regression suites and original
 development changes remain on `codex/scan-enhancement-v4-backup` at `4e2f3cd9`.
 
+## Scan capture quality
+
+The scanner and both camera-view defaults now request
+`ResolutionPreset.ultraHigh` (approximately 3840x2160). The previous scanner
+default was `high` (approximately 1280x720), limiting the detail available for
+fine text before cropping or editing. The resolution selector is debug-only,
+so the higher default also applies in release builds.
+
+Explicit resolution overrides remain supported. The camera plugin negotiates a
+supported resolution when 4K is unavailable; the target does not guarantee exact
+dimensions on every device. Higher-resolution captures can take longer to
+process and produce larger files. Detection/enhancement analysis remains bounded,
+while edits and saved PNGs retain the cropped image resolution. Thumbnails are
+generated separately and are not used as saved image data. Existing scans are
+not reprocessed and cannot recover detail lost during their original capture.
+
+The baseline and historical verification notes below describe the earlier
+recognition/enhancement adaptation; this capture-default change supersedes their
+statements that camera resolution remains identical to alpha2.
+
 ## Scope
 
 The scanner retains alpha2's standalone package, camera controller and preview,
@@ -148,3 +168,36 @@ still pending. Android also exercises the real capture → edit → discard → 
 camera → close flow. Physical camera accuracy, real OS interruptions, prolonged
 scanning, preview fit and memory behavior still require device verification.
 An iOS build/runtime check on a Mac is required before claiming iOS readiness.
+
+## Scan proportions
+
+Perspective cropping previously used the longest photographed horizontal and
+vertical edges independently for output dimensions. Camera tilt foreshortens
+those directions differently, so straightened pages could still look stretched.
+Independent pinhole-camera projections of A4 reproduce 17%-25% excess width.
+
+The shared perspective transform now estimates the physical rectangle ratio
+from a unit-square homography, assuming square pixels and an optical center at
+the image center. The method follows Zhang and He, *Whiteboard scanning and image
+enhancement*, sections 3.2-3.3:
+<https://www.microsoft.com/en-us/research/uploads/prod/2016/11/Digital-Signal-Processing.pdf>.
+It accepts focal lengths between 0.5 and 5 times the image's longest dimension
+and requires less than or equal to 2% ratio variation when each corner coordinate
+is perturbed by plus/minus `max(1, longestDimension / 960)` pixels. Singular,
+nonphysical or unstable estimates retain the previous dimensions. Accepted
+estimates retain the previous longest output dimension and derive the other
+dimension from the recovered ratio. No page format is forced to A4.
+
+Capture, manual recropping and file-based re-editing use this same calculation.
+Existing exported files are unchanged. Camera calibration and lens-distortion
+correction are not introduced, so automatic recovery remains approximate and
+some camera angles deliberately use the previous sizing.
+
+`test/scanner/perspective_test.dart` and the Android integration harness share
+independently projected A4, landscape, receipt, square and rotated-image cases.
+They check a 1% page-ratio tolerance, square content, resolution independence,
+conservative fallback and editor/recrop/re-edit displayed-versus-saved agreement.
+The combined suites pass 64 desktop checks (including the app widget test) and
+49 Android API 36 emulator checks. Full-app analysis with `--no-fatal-infos`
+reports the same 19 existing informational lints, with no warnings or errors.
+A physical A4 comparison from frontal and tilted phone captures is still needed.
