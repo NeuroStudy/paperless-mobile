@@ -384,7 +384,6 @@ class _PaperlessMobileDocumentScannerState
   }
 
   Widget _buildLiveDetection() {
-    final bottomViewPadding = MediaQuery.of(context).viewPadding.bottom;
     return FutureBuilder(
       future: _availableCameras,
       builder: (context, snapshot) {
@@ -412,12 +411,11 @@ class _PaperlessMobileDocumentScannerState
             _shutterButtonSize +
             _actionButtonRowHeight +
             (_scans.isNotEmpty ? _scanPreviewListHeight : 0) +
-            2 *
-                bottomBarVerticalPadding // x2 since it's applied both above and below the shutter row
-                +
-            bottomViewPadding;
+            2 * bottomBarVerticalPadding;
         return Scaffold(
           bottomNavigationBar: BottomAppBar(
+            // The rows provide vertical padding; BottomAppBar adds the safe area.
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             height: bottomBarHeight,
             child: Column(
               mainAxisSize: MainAxisSize.min,
