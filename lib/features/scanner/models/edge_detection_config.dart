@@ -44,6 +44,30 @@ class EdgeDetectionConfig {
     this.minAreaFactor = 0.04,
   });
 
+  // Settings builders create new instances on rebuild. Equal settings must
+  // not interrupt an active stream or discard detection stability.
+  @override
+  bool operator ==(Object other) =>
+      other is EdgeDetectionConfig &&
+      resizeThreshold == other.resizeThreshold &&
+      borderSize == other.borderSize &&
+      medianBlurKernel == other.medianBlurKernel &&
+      approxEpsilonFactor == other.approxEpsilonFactor &&
+      morphologyKernel == other.morphologyKernel &&
+      dilateKernel == other.dilateKernel &&
+      minAreaFactor == other.minAreaFactor;
+
+  @override
+  int get hashCode => Object.hash(
+    resizeThreshold,
+    borderSize,
+    medianBlurKernel,
+    approxEpsilonFactor,
+    morphologyKernel,
+    dilateKernel,
+    minAreaFactor,
+  );
+
   /// Fast preset: tuned for live preview.
   ///
   /// Compared with the still-image pipeline, this keeps substantially fewer

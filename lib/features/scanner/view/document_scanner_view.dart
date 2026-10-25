@@ -1,14 +1,15 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:paperless_mobile/features/scanner/models/auto_capture_config.dart';
 import 'package:paperless_mobile/features/scanner/models/edge_detection_config.dart';
 import 'package:paperless_mobile/features/scanner/models/debug_stage.dart';
 import 'package:paperless_mobile/features/scanner/models/document_frame.dart';
-import 'package:paperless_mobile/features/scanner/processing/detect_edges.dart';
-import 'package:paperless_mobile/features/scanner/processing/edge_detection_isolate.dart';
+import 'package:paperless_mobile/features/scanner/processing/scanner_detection_session.dart';
 import 'package:paperless_mobile/features/scanner/processing/frame_stability_tracker.dart';
 import 'package:paperless_mobile/features/scanner/view/focusable_camera_view.dart';
 import 'package:paperless_mobile/features/scanner/view/widgets/auto_capture_overlay_painter.dart';
@@ -20,7 +21,8 @@ class DocumentScannerView extends StatefulWidget {
   final CameraDescription camera;
   final DebugStage debugStage;
   final ResolutionPreset resolutionPreset;
-  final ValueChanged<CameraController> onControllerInitialized;
+  final ValueChanged<CameraController?> onControllerChanged;
+  final ScannerDetectionController? detectionController;
 
   /// Called whenever the detected frame or image size changes.
   /// Passes the current smoothed frame (or null) and the image size (or null).
@@ -46,7 +48,8 @@ class DocumentScannerView extends StatefulWidget {
     required this.camera,
     this.debugStage = DebugStage.none,
     this.resolutionPreset = ResolutionPreset.medium,
-    required this.onControllerInitialized,
+    required this.onControllerChanged,
+    this.detectionController,
     this.onFrameChanged,
     required this.liveEdgeDetectionEnabled,
     this.autoCaptureConfig = const AutoCaptureConfig(),
@@ -60,12 +63,13 @@ class DocumentScannerView extends StatefulWidget {
 
 class _DocumentScannerViewState extends State<DocumentScannerView>
     with SingleTickerProviderStateMixin {
-  CameraController? _controller;
+  final _cameraKey = GlobalKey<FocusableCameraViewState>();
+  late final ScannerDetectionSession _session;
+  late ScannerDetectionController _detectionController;
+  bool _disposing = false;
   DocumentFrame? _currentFrame;
   Size? _imageSize;
   ui.Image? _debugUiImage;
-
-  final EdgeDetectionRunner _runner = EdgeDetectionRunner();
 
   /// Smoothing factor for the exponential moving average (0..1).
   /// Lower values produce smoother (but more laggy) corner positions.
@@ -95,26 +99,33 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
   @override
   void initState() {
     super.initState();
-    _runner.start();
     _stabilityTracker = FrameStabilityTracker(widget.autoCaptureConfig);
     _autoCaptureAnimController = AnimationController(
       vsync: this,
       duration: widget.autoCaptureConfig.stableDuration,
     )..addStatusListener(_onAutoCaptureAnimStatus);
+    _session = ScannerDetectionSession(
+      onDetection: _onDetection,
+      onReset: _resetDetection,
+      restartCamera: () =>
+          _cameraKey.currentState?.restartCamera() ?? Future.value(),
+    );
+    _detectionController =
+        widget.detectionController ?? ScannerDetectionController();
+    _detectionController.attach(_session);
+    _configureSession();
   }
 
   @override
   void didUpdateWidget(covariant DocumentScannerView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.liveEdgeDetectionEnabled != widget.liveEdgeDetectionEnabled) {
-      final controller = _controller;
-      if (controller == null || !controller.value.isInitialized) return;
-      if (widget.liveEdgeDetectionEnabled) {
-        _startImageStream(controller);
-      } else {
-        _stopImageStream(controller);
-      }
+    if (oldWidget.detectionController != widget.detectionController) {
+      _detectionController.detach(_session);
+      _detectionController =
+          widget.detectionController ?? ScannerDetectionController();
+      _detectionController.attach(_session);
     }
+    _configureSession();
     // Update tracker config if it changed.
     if (oldWidget.autoCaptureConfig != widget.autoCaptureConfig) {
       _stabilityTracker = FrameStabilityTracker(widget.autoCaptureConfig);
@@ -126,9 +137,11 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
 
   @override
   void dispose() {
+    _disposing = true;
+    _detectionController.detach(_session);
+    unawaited(_session.dispose());
     _stopAutoCaptureVibration();
     _debugUiImage?.dispose();
-    _runner.dispose();
     _autoCaptureAnimController.dispose();
     super.dispose();
   }
@@ -144,10 +157,10 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
           child: Stack(
             children: [
               FocusableCameraView(
-                key: ValueKey(widget.camera),
+                key: _cameraKey,
                 camera: widget.camera,
                 resolutionPreset: widget.resolutionPreset,
-                onControllerInitialized: _onControllerInitialized,
+                onControllerChanged: _onControllerChanged,
               ),
               if (widget.liveEdgeDetectionEnabled &&
                   _currentFrame != null &&
@@ -209,83 +222,67 @@ class _DocumentScannerViewState extends State<DocumentScannerView>
     );
   }
 
-  void _onControllerInitialized(CameraController controller) {
-    _controller = controller;
-    widget.onControllerInitialized(controller);
-    if (widget.liveEdgeDetectionEnabled) {
-      _startImageStream(controller);
-    }
+  void _configureSession() {
+    unawaited(
+      _session.configure(
+        enabled: widget.liveEdgeDetectionEnabled,
+        debugStage: widget.debugStage,
+        config: widget.edgeDetectionConfig,
+      ),
+    );
   }
 
-  void _startImageStream(CameraController controller) {
-    if (controller.value.isStreamingImages) return;
+  Future<void> _onControllerChanged(CameraController? controller) {
+    if (_disposing || !mounted) return _session.dispose();
+    widget.onControllerChanged(controller);
+    return _session.setCamera(controller);
+  }
 
-    if (widget.debugStage != DebugStage.none) {
-      // Debug mode: process on main isolate to produce debug images.
-      controller.startImageStream(
-        (image) => processImage(
-          image,
-          widget.camera.sensorOrientation,
-          controller.value.deviceOrientation,
-          widget.camera.lensDirection,
-          _onFrameReceived,
-          debugStage: widget.debugStage,
-        ),
-      );
+  void _resetDetection() {
+    if (_disposing || !mounted) return;
+    _debugUiImage?.dispose();
+    _debugUiImage = null;
+    _currentFrame = null;
+    _imageSize = null;
+    _smoothedFrame = null;
+    _detectionHistory.clear();
+    _resetAutoCapture();
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_disposing) setState(() {});
+      });
+    } else {
+      setState(() {});
+    }
+    widget.onFrameChanged?.call(null, null);
+  }
+
+  void _onDetection(
+    DocumentFrame? frame,
+    Size imageSize,
+    ui.Image? debugImage,
+  ) {
+    if (_disposing || !mounted) {
+      debugImage?.dispose();
       return;
     }
-
-    // Production mode: offload to background isolate with frame skipping.
-    controller.startImageStream((image) async {
-      if (_runner.isProcessing) return;
-
-      final prepared = prepareCameraImage(
-        image,
-        widget.camera.sensorOrientation,
-        controller.value.deviceOrientation,
-        widget.camera.lensDirection,
-      );
-      if (prepared == null) return;
-
-      final outcome = await _runner.detect(
-        rgbaBytes: prepared.bytes,
-        width: prepared.width,
-        height: prepared.height,
-        rotationCompensation: prepared.rotation,
-        edgeDetectionConfig: widget.edgeDetectionConfig,
-      );
-
-      // null means skipped (still processing) — don't count.
-      if (!mounted || outcome == null) return;
-
-      switch (outcome) {
-        case FrameDetected(:final frame, :final imageSize):
-          _onFrameReceived(frame, imageSize, null);
-        case FrameNotFound():
-          _onFrameMissed();
-      }
-    });
-  }
-
-  void _stopImageStream(CameraController controller) {
-    if (!controller.value.isStreamingImages) return;
-    controller.stopImageStream();
-    setState(() {
-      _currentFrame = null;
-      _imageSize = null;
-      _smoothedFrame = null;
-      _detectionHistory.clear();
-    });
-    _resetAutoCapture();
-    widget.onFrameChanged?.call(null, null);
+    if (frame != null) {
+      _onFrameReceived(frame, imageSize, debugImage);
+    } else {
+      _debugUiImage?.dispose();
+      _debugUiImage = debugImage;
+      _onFrameMissed();
+      setState(() {});
+    }
   }
 
   void _onFrameReceived(
     DocumentFrame frame,
     Size imageSize,
     ui.Image? debugImage,
-  ) async {
-    if (!mounted) {
+  ) {
+    if (!mounted || _disposing) {
       debugImage?.dispose();
       return;
     }

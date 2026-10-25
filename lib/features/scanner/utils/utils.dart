@@ -69,11 +69,16 @@ Uint8List yuv420ToRGBA8888(CameraImage image) {
   final int width = image.width;
   final int height = image.height;
 
-  final int uvRowStride = image.planes[1].bytesPerRow;
-  final int uvPixelStride = image.planes[1].bytesPerPixel!;
+  if (image.planes.length != 3) {
+    throw const FormatException('Expected three YUV planes');
+  }
+  final int uRowStride = image.planes[1].bytesPerRow;
+  final int uPixelStride = image.planes[1].bytesPerPixel ?? 1;
+  final int vRowStride = image.planes[2].bytesPerRow;
+  final int vPixelStride = image.planes[2].bytesPerPixel ?? 1;
 
   final int yRowStride = image.planes[0].bytesPerRow;
-  final int yPixelStride = image.planes[0].bytesPerPixel!;
+  final int yPixelStride = image.planes[0].bytesPerPixel ?? 1;
 
   final yBuffer = image.planes[0].bytes;
   final uBuffer = image.planes[1].bytes;
@@ -83,13 +88,13 @@ Uint8List yuv420ToRGBA8888(CameraImage image) {
 
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      final int uvIndex =
-          uvPixelStride * (x / 2).floor() + uvRowStride * (y / 2).floor();
+      final int uIndex = uPixelStride * (x >> 1) + uRowStride * (y >> 1);
+      final int vIndex = vPixelStride * (x >> 1) + vRowStride * (y >> 1);
       final int index = y * width + x;
 
       final yValue = yBuffer[y * yRowStride + x * yPixelStride];
-      final uValue = uBuffer[uvIndex];
-      final vValue = vBuffer[uvIndex];
+      final uValue = uBuffer[uIndex];
+      final vValue = vBuffer[vIndex];
 
       final r = (yValue + 1.402 * (vValue - 128)).round();
       final g = (yValue - 0.344136 * (uValue - 128) - 0.714136 * (vValue - 128))
@@ -111,6 +116,12 @@ Uint8List nv21ToRGBA8888(CameraImage image) {
   final int frameSize = width * height;
   final rgbaBuffer = Uint8List(frameSize * 4);
   final bytes = image.planes[0].bytes;
+  if (image.planes.length != 1 ||
+      width.isOdd ||
+      height.isOdd ||
+      bytes.length < frameSize * 3 ~/ 2) {
+    throw const FormatException('Invalid packed NV21 image');
+  }
 
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
@@ -137,13 +148,18 @@ Uint8List nv21ToRGBA8888(CameraImage image) {
   return rgbaBuffer;
 }
 
-Uint8List bgraToRgbaInPlace(Uint8List bgra) {
-  final out = Uint8List(bgra.length);
-  for (int i = 0; i < bgra.length; i += 4) {
-    out[i] = bgra[i + 2]; // R
-    out[i + 1] = bgra[i + 1]; // G
-    out[i + 2] = bgra[i]; // B
-    out[i + 3] = bgra[i + 3]; // A
+Uint8List bgraImageToRGBA8888(CameraImage image) {
+  final plane = image.planes.first;
+  final out = Uint8List(image.width * image.height * 4);
+  for (var y = 0; y < image.height; y++) {
+    for (var x = 0; x < image.width; x++) {
+      final source = y * plane.bytesPerRow + x * 4;
+      final target = (y * image.width + x) * 4;
+      out[target] = plane.bytes[source + 2];
+      out[target + 1] = plane.bytes[source + 1];
+      out[target + 2] = plane.bytes[source];
+      out[target + 3] = plane.bytes[source + 3];
+    }
   }
   return out;
 }

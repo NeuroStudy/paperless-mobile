@@ -44,14 +44,24 @@ int? computeRotationCompensation(
   CameraLensDirection lensDirection,
 ) {
   final format = InputImageFormatValue.fromRawValue(image.format.raw);
-  if (format == null) return null;
+  if (format == null ||
+      image.width <= 0 ||
+      image.height <= 0 ||
+      image.planes.isEmpty) {
+    return null;
+  }
 
   final bytes = switch (format) {
-    InputImageFormat.yuv_420_888 => yuv420ToRGBA8888(image),
+    InputImageFormat.yuv_420_888 =>
+      image.planes.length == 1
+          ? nv21ToRGBA8888(image)
+          : yuv420ToRGBA8888(image),
     InputImageFormat.nv21 => nv21ToRGBA8888(image),
-    InputImageFormat.bgra8888 => bgraToRgbaInPlace(image.planes.first.bytes),
-    _ => throw UnimplementedError(),
+    InputImageFormat.bgra8888 => bgraImageToRGBA8888(image),
+    _ => null,
   };
+
+  if (bytes == null) return null;
 
   final rotation = computeRotationCompensation(
     sensorOrientation,
@@ -68,62 +78,45 @@ int? computeRotationCompensation(
   );
 }
 
-void processImage(
+/// Debug processing uses the same conversion, rotation and configuration as live detection.
+Future<(DocumentFrame?, Size, ui.Image?)?> processImage(
   CameraImage image,
   int? sensorOrientation,
   DeviceOrientation deviceOrientation,
-  CameraLensDirection lensDirection,
-  void Function(DocumentFrame frame, Size imageSize, ui.Image? debugImage)
-  onFrameDetected, {
+  CameraLensDirection lensDirection, {
   DebugStage debugStage = DebugStage.none,
+  EdgeDetectionConfig config = EdgeDetectionConfig.fast,
 }) async {
-  final format = InputImageFormatValue.fromRawValue(image.format.raw);
-  if (format == null) return;
-
-  final bytes = switch (format) {
-    InputImageFormat.yuv_420_888 => yuv420ToRGBA8888(image),
-    InputImageFormat.nv21 => nv21ToRGBA8888(image),
-    InputImageFormat.bgra8888 => bgraToRgbaInPlace(image.planes.first.bytes),
-    _ => throw UnimplementedError(),
-  };
-
-  cv4.Mat mat = cv4.Mat.fromList(
-    image.height,
-    image.width,
-    cv4.MatType.CV_8UC4,
-    bytes,
-  );
-
-  final rotationCompensation = computeRotationCompensation(
+  final prepared = prepareCameraImage(
+    image,
     sensorOrientation,
     deviceOrientation,
     lensDirection,
   );
-  if (rotationCompensation == null) return;
-
-  switch (rotationCompensation) {
-    case 90:
-      await cv4.rotateAsync(mat, cv4.ROTATE_90_CLOCKWISE, dst: mat);
-      break;
-    case 180:
-      await cv4.rotateAsync(mat, cv4.ROTATE_180, dst: mat);
-      break;
-    case 270:
-      await cv4.rotateAsync(mat, cv4.ROTATE_90_COUNTERCLOCKWISE, dst: mat);
-      break;
-    default:
-      // no rotation needed
-      break;
-  }
-
-  final (frame, debugImage) = await detectDocumentEdges(
-    mat,
-    debugStage: debugStage,
+  if (prepared == null) return null;
+  final mat = cv4.Mat.fromList(
+    prepared.height,
+    prepared.width,
+    cv4.MatType.CV_8UC4,
+    prepared.bytes,
   );
-  final imageSize = Size(mat.cols.toDouble(), mat.rows.toDouble());
-  mat.dispose();
-  if (frame != null) {
-    onFrameDetected(frame, imageSize, debugImage);
+  try {
+    switch (prepared.rotation) {
+      case 90:
+        await cv4.rotateAsync(mat, cv4.ROTATE_90_CLOCKWISE, dst: mat);
+      case 180:
+        await cv4.rotateAsync(mat, cv4.ROTATE_180, dst: mat);
+      case 270:
+        await cv4.rotateAsync(mat, cv4.ROTATE_90_COUNTERCLOCKWISE, dst: mat);
+    }
+    final (frame, debugImage) = await detectDocumentEdges(
+      mat,
+      config: config,
+      debugStage: debugStage,
+    );
+    return (frame, Size(mat.cols.toDouble(), mat.rows.toDouble()), debugImage);
+  } finally {
+    mat.dispose();
   }
 }
 

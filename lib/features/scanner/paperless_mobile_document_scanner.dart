@@ -14,6 +14,7 @@ import 'package:paperless_mobile/features/scanner/models/scan_result.dart';
 import 'package:paperless_mobile/features/scanner/models/transient_scan_result.dart';
 import 'package:paperless_mobile/features/scanner/processing/detect_edges_from_file.dart';
 import 'package:paperless_mobile/features/scanner/processing/image_edit.dart';
+import 'package:paperless_mobile/features/scanner/processing/scanner_detection_session.dart';
 import 'package:paperless_mobile/features/scanner/view/document_scanner_view.dart';
 import 'package:paperless_mobile/features/scanner/view/image_edit_view.dart';
 import 'package:paperless_mobile/features/scanner/view/widgets/debug_stage_switcher.dart';
@@ -95,6 +96,8 @@ class _PaperlessMobileDocumentScannerState
   late bool _liveDetectionEnabled;
   late bool _autoCaptureEnabled;
   CameraController? _controller;
+  final _detectionController = ScannerDetectionController();
+  bool _isCapturing = false;
   DebugStage _debugStage = DebugStage.none;
   bool _isTorchActive = false;
   bool _handlingSystemBack = false;
@@ -181,14 +184,22 @@ class _PaperlessMobileDocumentScannerState
 
   Future<void> _onShutterPressed() async {
     final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
+    if (_isCapturing || controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    _isCapturing = true;
+    // Pausing clears the overlay and fallback callback; retain this capture's
+    // evidence before awaiting stream shutdown.
+    final liveFrame = _lastLiveFrame;
+    final liveImageSize = _lastLiveImageSize;
+    final autoFrame = _autoCaptureFallbackFrame;
+    final autoImageSize = _autoCaptureFallbackImageSize;
+    _autoCaptureFallbackFrame = null;
+    _autoCaptureFallbackImageSize = null;
 
     try {
-      // Capture the image BEFORE switching phase, because changing phase
-      // removes the camera view from the tree and disposes the controller.
-      if (controller.value.isStreamingImages) {
-        await controller.stopImageStream();
-      }
+      await _detectionController.pause();
+      if (!mounted || !identical(_controller, controller)) return;
       final xFile = await controller.takePicture();
 
       if (!mounted) {
@@ -204,16 +215,19 @@ class _PaperlessMobileDocumentScannerState
         bytes,
         sourceFileName: p.basename(xFile.path),
         sourceCleanupPath: xFile.path,
-        plausibilityFallbackFrame: _autoCaptureFallbackFrame,
-        plausibilityFallbackImageSize: _autoCaptureFallbackImageSize,
-        coordinateFallbackFrame: _autoCaptureFallbackFrame ?? _lastLiveFrame,
-        coordinateFallbackImageSize: _autoCaptureFallbackFrame != null
-            ? _autoCaptureFallbackImageSize
-            : _lastLiveImageSize,
+        plausibilityFallbackFrame: autoFrame,
+        plausibilityFallbackImageSize: autoImageSize,
+        coordinateFallbackFrame: autoFrame ?? liveFrame,
+        coordinateFallbackImageSize: autoFrame != null
+            ? autoImageSize
+            : liveImageSize,
       );
     } catch (e) {
       debugPrint('Capture/crop failed: $e');
       if (mounted) _returnToLiveDetection();
+    } finally {
+      _isCapturing = false;
+      await _detectionController.resume();
     }
   }
 
@@ -772,7 +786,8 @@ class _PaperlessMobileDocumentScannerState
                   // Camera preview with live edge detection.
                   DocumentScannerView(
                     key: ValueKey(resolutionPreset),
-                    onControllerInitialized: _setController,
+                    onControllerChanged: _setController,
+                    detectionController: _detectionController,
                     camera: camera,
                     debugStage: kDebugMode ? _debugStage : DebugStage.none,
                     resolutionPreset: resolutionPreset,
