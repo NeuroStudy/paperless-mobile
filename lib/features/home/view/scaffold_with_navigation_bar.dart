@@ -110,6 +110,17 @@ class ScaffoldWithNavigationBarState extends State<ScaffoldWithNavigationBar> {
               ),
               disableWhen: !context.uiSettings$.canViewInbox,
             ),
+            _toggleDestination(
+              NavigationDestination(
+                icon: const Icon(Icons.chat_bubble_outline),
+                selectedIcon: Icon(
+                  Icons.chat_bubble,
+                  color: theme.colorScheme.primary,
+                ),
+                label: S.of(context)!.chat,
+              ),
+              disableWhen: !context.uiSettings$.canViewDocuments,
+            ),
           ],
         ),
         body: widget.navigationShell,

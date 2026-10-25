@@ -1197,5 +1197,26 @@
   "youHaveNoViewsOnYourDashboardYet": "You have not added any views to your dashboard yet.",
   "@youHaveNoViewsOnYourDashboardYet": {},
   "youreOffline": "You're offline.",
-  "@youreOffline": {}
+  "@youreOffline": {},
+  "chat": "Chat",
+  "chatNewChat": "New chat",
+  "chatEmptyHint": "Ask about your documents. Answers include links to relevant sources.",
+  "chatQuestionHint": "Ask about your documents…",
+  "chatSend": "Send",
+  "chatStop": "Stop",
+  "chatThinking": "Thinking…",
+  "chatStopped": "Response stopped",
+  "chatSources": "Sources",
+  "chatDocumentTitle": "Document {id}",
+  "@chatDocumentTitle": {
+    "placeholders": {
+      "id": {
+        "type": "int"
+      }
+    }
+  },
+  "chatUnavailable": "Document chat requires a compatible Paperless-ngx server with AI and the document index enabled.",
+  "chatForbidden": "You do not have permission to chat with documents.",
+  "chatTimeout": "The response timed out. Please try again.",
+  "chatResponseFailed": "The response could not be completed. Please try again."
 }
