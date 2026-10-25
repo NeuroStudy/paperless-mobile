@@ -15,6 +15,8 @@ import 'package:paperless_mobile/features/scanner/processing/image_edit.dart';
 import 'package:paperless_mobile/features/scanner/view/image_edit_view.dart';
 import 'package:paperless_mobile/generated/l10n/app_localizations.dart';
 
+import 'perspective_transform_cases.dart';
+
 image.Image _page() {
   final page = image.Image(width: 600, height: 800);
   image.fill(page, color: image.ColorRgb8(250, 248, 245));
@@ -88,6 +90,7 @@ Uint8List _png(image.Image picture) =>
 
 /// Cases and numerical limits carried forward from the v4 native scanner suites.
 void registerProcessingTests() {
+  registerPerspectiveTransformTests();
   test(
     'live detector supplies stable corners to auto capture and resets on loss',
     () async {

@@ -278,12 +278,7 @@ class DocumentScannerCubit extends Cubit<DocumentScannerState> {
             originalFileName: fileName,
             editedFileName: fileName,
             originalImageSize: Size(imageWidth, imageHeight),
-            cropFrame: DocumentFrame(
-              topLeft: Offset.zero,
-              topRight: Offset(imageWidth, 0),
-              bottomRight: Offset(imageWidth, imageHeight),
-              bottomLeft: Offset(0, imageHeight),
-            ),
+            cropFrame: DocumentFrame.fullImage(Size(imageWidth, imageHeight)),
             quarterTurns: 0,
             colorFilter: ScanColorFilter.none,
             bwThreshold: 10,

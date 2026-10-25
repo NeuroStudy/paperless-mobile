@@ -332,23 +332,18 @@ class _PaperlessMobileDocumentScannerState
     }
 
     if (detectedFrame != null) {
-      return detectedFrame;
+      return detectedFrame.clampedToImage(imageSize);
     }
 
     if (coordinateFallbackFrame != null &&
         coordinateFallbackImageSize != null) {
-      return coordinateFallbackFrame.scale(
-        imageSize.width / coordinateFallbackImageSize.width,
-        imageSize.height / coordinateFallbackImageSize.height,
+      return coordinateFallbackFrame.mapToImage(
+        from: coordinateFallbackImageSize,
+        to: imageSize,
       );
     }
 
-    return DocumentFrame(
-      topLeft: Offset.zero,
-      topRight: Offset(imageSize.width, 0),
-      bottomRight: Offset(imageSize.width, imageSize.height),
-      bottomLeft: Offset(0, imageSize.height),
-    );
+    return DocumentFrame.fullImage(imageSize);
   }
 
   Future<void> _onImageEditConfirmed(ImageEditResult result) async {
@@ -551,22 +546,7 @@ class _PaperlessMobileDocumentScannerState
     ScanResult persistedScan,
     Size originalImageSize,
   ) {
-    if (_isZeroFrame(persistedScan.cropFrame)) {
-      return DocumentFrame(
-        topLeft: Offset.zero,
-        topRight: Offset(originalImageSize.width, 0),
-        bottomRight: Offset(originalImageSize.width, originalImageSize.height),
-        bottomLeft: Offset(0, originalImageSize.height),
-      );
-    }
-    return persistedScan.cropFrame;
-  }
-
-  bool _isZeroFrame(DocumentFrame frame) {
-    return frame.topLeft == Offset.zero &&
-        frame.topRight == Offset.zero &&
-        frame.bottomRight == Offset.zero &&
-        frame.bottomLeft == Offset.zero;
+    return persistedScan.cropFrame.restoredForImage(originalImageSize);
   }
 
   String _newScanFileName({String extension = '.jpg'}) {

@@ -137,7 +137,9 @@ class _ImageEditViewState extends State<ImageEditView>
   @override
   void initState() {
     super.initState();
-    _cropFrame = widget.initialCropFrame;
+    _cropFrame = widget.initialCropFrame.restoredForImage(
+      widget.originalImageSize,
+    );
     _quarterTurns = widget.initialQuarterTurns;
     _colorFilter = widget.initialColorFilter;
     _bwThreshold = widget.initialBwThreshold;

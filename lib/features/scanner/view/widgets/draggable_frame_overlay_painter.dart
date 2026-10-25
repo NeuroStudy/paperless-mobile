@@ -52,7 +52,7 @@ class DraggableFrameOverlayPainter extends CustomPainter {
     final offsetY = (size.height - imageSize.height * scale) / 2;
 
     Offset transform(Offset p) =>
-        Offset(p.dx * scale + offsetX, p.dy * scale + offsetY);
+        Offset((p.dx + .5) * scale + offsetX, (p.dy + .5) * scale + offsetY);
 
     final imageCorners = [
       frame.topLeft,
@@ -134,7 +134,7 @@ class DraggableFrameOverlayPainter extends CustomPainter {
     final srcRegionHalf = r / _loupeZoom;
     // Source rect in image pixels.
     final srcRect = Rect.fromCenter(
-      center: imagePos,
+      center: imagePos + const Offset(.5, .5),
       width: srcRegionHalf * 2 / 1.0, // in image coords
       height: srcRegionHalf * 2 / 1.0,
     );

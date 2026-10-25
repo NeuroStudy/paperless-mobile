@@ -57,7 +57,7 @@ class _EdgeAdjustmentViewState extends State<EdgeAdjustmentView> {
   @override
   void initState() {
     super.initState();
-    _frame = widget.initialFrame;
+    _frame = widget.initialFrame.restoredForImage(widget.imageSize);
     _decodeImage();
   }
 
@@ -197,7 +197,10 @@ class _EdgeAdjustmentViewState extends State<EdgeAdjustmentView> {
     final offsetX = (size.width - widget.imageSize.width * scale) / 2;
     final offsetY = (size.height - widget.imageSize.height * scale) / 2;
 
-    return Offset(imagePos.dx * scale + offsetX, imagePos.dy * scale + offsetY);
+    return Offset(
+      (imagePos.dx + .5) * scale + offsetX,
+      (imagePos.dy + .5) * scale + offsetY,
+    );
   }
 
   ({Map<_Corner, Offset> corners, _Corner closestCorner, double minDistance})
@@ -239,12 +242,7 @@ class _EdgeAdjustmentViewState extends State<EdgeAdjustmentView> {
   }
 
   DocumentFrame get _scanBoundaryFrame {
-    return DocumentFrame(
-      topLeft: Offset.zero,
-      topRight: Offset(widget.imageSize.width, 0),
-      bottomRight: Offset(widget.imageSize.width, widget.imageSize.height),
-      bottomLeft: Offset(0, widget.imageSize.height),
-    );
+    return DocumentFrame.fullImage(widget.imageSize);
   }
 
   void _resetFrameToScanBounds() {
@@ -404,8 +402,8 @@ class _EdgeAdjustmentViewState extends State<EdgeAdjustmentView> {
     };
 
     final newPos = Offset(
-      (currentPos.dx + imageDelta.dx).clamp(0.0, widget.imageSize.width),
-      (currentPos.dy + imageDelta.dy).clamp(0.0, widget.imageSize.height),
+      (currentPos.dx + imageDelta.dx).clamp(0.0, widget.imageSize.width - 1),
+      (currentPos.dy + imageDelta.dy).clamp(0.0, widget.imageSize.height - 1),
     );
 
     final candidate = DocumentFrame(
@@ -428,8 +426,8 @@ class _EdgeAdjustmentViewState extends State<EdgeAdjustmentView> {
   }
 
   void _moveEntireFrame(Offset imageDelta) {
-    final maxW = widget.imageSize.width;
-    final maxH = widget.imageSize.height;
+    final maxW = widget.imageSize.width - 1;
+    final maxH = widget.imageSize.height - 1;
 
     // Clamp the delta so no corner goes out of bounds.
     var dx = imageDelta.dx;
