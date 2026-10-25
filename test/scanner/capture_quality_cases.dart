@@ -13,7 +13,7 @@ const _size = Size(2160, 3840);
 final _frame = DocumentFrame(
   topLeft: Offset.zero,
   topRight: const Offset(2159, 0),
-  bottomRight: const Offset(2159, 3839),
+  bottomRight: const Offset(2160, 3840),
   bottomLeft: const Offset(0, 3839),
 );
 
@@ -131,7 +131,7 @@ void registerCaptureQualityTests() {
         final output = image.decodePng(
           await perspectiveTransform(imageBytes: bytes, frame: _frame),
         )!;
-        expect((output.width, output.height), (2159, 3839));
+        expect((output.width, output.height), (2160, 3840));
         _expectQuality(output);
       },
     );

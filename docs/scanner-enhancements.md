@@ -164,8 +164,8 @@ checks, including the production capture/editor round trip and worker cancellati
 Camera capture settings, controls and layout remain alpha2's. Lifecycle regression
 tests cover closing with no stream, after stopping for capture, while streaming,
 during initialization and flash setup, and background/resume with native shutdown
-still pending. Android also exercises the real capture → edit → discard → live
-camera → close flow. Physical camera accuracy, real OS interruptions, prolonged
+still pending. Android also exercises the real capture â†’ edit â†’ discard â†’ live
+camera â†’ close flow. Physical camera accuracy, real OS interruptions, prolonged
 scanning, preview fit and memory behavior still require device verification.
 An iOS build/runtime check on a Mac is required before claiming iOS readiness.
 
@@ -283,5 +283,13 @@ Ported from `e16ff893`. The enhancement implementation had the identical startin
 blob on both branches. Protect reference-normalized original pixels so narrow
 colored strips are not treated as paper; apply bounded background cleanup while
 preserving faint glyphs, punctuation, signatures and rules. Analysis remains
-bounded and crop-specific; Enhance stays off initially. The six refinement
+bounded and crop-specific; existing editor defaults are retained. The six refinement
 regressions are shared with the Android harness.
+
+## Alpha 2 consolidation: exact crops
+
+Adapted from `5c295079`. Integer-aligned rectangles copy inclusive pixel-center
+bounds exactly, including single rows/columns and full-image crops. Fractional
+and perspective selections still use bilinear interpolation and retain Alpha 2
+aspect-ratio recovery. Capture fallback mapping and crop handles use the same
+coordinates. The Alpha 2 crop layout is retained; no reset control was imported.

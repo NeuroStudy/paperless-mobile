@@ -36,9 +36,15 @@ class FrameOverlayPainter extends CustomPainter {
 
     final path = Path();
     final first = corners.first;
-    path.moveTo(first.dx * scale + offsetX, first.dy * scale + offsetY);
+    path.moveTo(
+      (first.dx + .5) * scale + offsetX,
+      (first.dy + .5) * scale + offsetY,
+    );
     for (final point in corners.skip(1)) {
-      path.lineTo(point.dx * scale + offsetX, point.dy * scale + offsetY);
+      path.lineTo(
+        (point.dx + .5) * scale + offsetX,
+        (point.dy + .5) * scale + offsetY,
+      );
     }
     path.close();
     canvas.drawPath(path, paint);

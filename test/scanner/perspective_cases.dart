@@ -91,19 +91,22 @@ class _ProjectedPage {
   }
 }
 
+// Pixel counts include both corner centers; geometry assertions remain unchanged.
 (int, int) _legacySize(DocumentFrame f) => (
   math
-      .max(
-        (f.topRight - f.topLeft).distance,
-        (f.bottomRight - f.bottomLeft).distance,
-      )
-      .round(),
+          .max(
+            (f.topRight - f.topLeft).distance,
+            (f.bottomRight - f.bottomLeft).distance,
+          )
+          .round() +
+      1,
   math
-      .max(
-        (f.bottomLeft - f.topLeft).distance,
-        (f.bottomRight - f.topRight).distance,
-      )
-      .round(),
+          .max(
+            (f.bottomLeft - f.topLeft).distance,
+            (f.bottomRight - f.topRight).distance,
+          )
+          .round() +
+      1,
 );
 
 void _expectProportions(image.Image picture, double ratio) {

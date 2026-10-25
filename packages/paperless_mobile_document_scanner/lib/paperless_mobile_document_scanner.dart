@@ -195,23 +195,18 @@ class _PaperlessMobileDocumentScannerState
             ? _autoCaptureFallbackImageSize
             : _lastLiveImageSize;
         if (liveFallback != null && liveFallbackSize != null) {
-          frame = liveFallback.scale(
-            imageSize.width / liveFallbackSize.width,
-            imageSize.height / liveFallbackSize.height,
+          frame = liveFallback.mapToImage(
+            from: liveFallbackSize,
+            to: imageSize,
           );
         }
       }
 
       if (frame == null) {
         // No frame found at all — fallback to full image rectangle.
-        _capturedFrame = DocumentFrame(
-          topLeft: Offset.zero,
-          topRight: Offset(imageSize.width, 0),
-          bottomRight: Offset(imageSize.width, imageSize.height),
-          bottomLeft: Offset(0, imageSize.height),
-        );
+        _capturedFrame = DocumentFrame.fullImage(imageSize);
       } else {
-        _capturedFrame = frame;
+        _capturedFrame = frame.clampedToImage(imageSize);
       }
 
       // Clear the one-shot auto-capture fallback.

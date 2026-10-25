@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/painting.dart';
 
+/// Corners are pixel centers: an image's last pixel is (width - 1, height - 1).
 class DocumentFrame {
   final Offset topLeft;
   final Offset topRight;
@@ -12,6 +15,68 @@ class DocumentFrame {
     required this.bottomRight,
     required this.bottomLeft,
   });
+
+  factory DocumentFrame.fullImage(Size imageSize) {
+    _validateImageSize(imageSize);
+    return DocumentFrame(
+      topLeft: Offset.zero,
+      topRight: Offset(imageSize.width - 1, 0),
+      bottomRight: Offset(imageSize.width - 1, imageSize.height - 1),
+      bottomLeft: Offset(0, imageSize.height - 1),
+    );
+  }
+
+  /// Also accepts older saved frames whose far corners were width/height.
+  DocumentFrame clampedToImage(Size imageSize) {
+    _validateImageSize(imageSize);
+    Offset clamp(Offset point) {
+      if (!point.dx.isFinite || !point.dy.isFinite) {
+        throw ArgumentError.value(point, 'frame', 'Corners must be finite');
+      }
+      return Offset(
+        point.dx.clamp(0.0, imageSize.width - 1),
+        point.dy.clamp(0.0, imageSize.height - 1),
+      );
+    }
+
+    return DocumentFrame(
+      topLeft: clamp(topLeft),
+      topRight: clamp(topRight),
+      bottomRight: clamp(bottomRight),
+      bottomLeft: clamp(bottomLeft),
+    );
+  }
+
+  /// The all-zero frame was used as a placeholder by legacy scan metadata.
+  DocumentFrame restoredForImage(Size imageSize) {
+    if (topLeft == Offset.zero &&
+        topRight == Offset.zero &&
+        bottomRight == Offset.zero &&
+        bottomLeft == Offset.zero) {
+      return DocumentFrame.fullImage(imageSize);
+    }
+    return clampedToImage(imageSize);
+  }
+
+  /// Maps corresponding pixel centers between preview and captured images.
+  DocumentFrame mapToImage({required Size from, required Size to}) {
+    _validateImageSize(to);
+    return clampedToImage(from)
+        .scale(
+          (to.width - 1) / math.max(1.0, from.width - 1),
+          (to.height - 1) / math.max(1.0, from.height - 1),
+        )
+        .clampedToImage(to);
+  }
+
+  static void _validateImageSize(Size size) {
+    if (!size.width.isFinite ||
+        !size.height.isFinite ||
+        size.width < 1 ||
+        size.height < 1) {
+      throw ArgumentError.value(size, 'imageSize', 'Image must contain pixels');
+    }
+  }
 
   DocumentFrame scale(double scaleX, double scaleY) {
     return DocumentFrame(
@@ -102,12 +167,12 @@ class DocumentFrame {
   }) {
     // Normalise both frames to 0..1 coordinate space.
     final normThis = scale(
-      1.0 / thisImageSize.width,
-      1.0 / thisImageSize.height,
+      1.0 / math.max(1.0, thisImageSize.width - 1),
+      1.0 / math.max(1.0, thisImageSize.height - 1),
     );
     final normCandidate = candidate.scale(
-      1.0 / candidateImageSize.width,
-      1.0 / candidateImageSize.height,
+      1.0 / math.max(1.0, candidateImageSize.width - 1),
+      1.0 / math.max(1.0, candidateImageSize.height - 1),
     );
 
     // Area comparison.

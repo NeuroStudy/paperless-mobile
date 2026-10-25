@@ -9,12 +9,15 @@ import '../test/scanner/capture_quality_cases.dart';
 
 import '../test/scanner/enhancement_refinement_cases.dart';
 
+import '../test/scanner/perspective_transform_cases.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   registerProcessingTests();
   registerEnhancementRefinementTests();
   registerCaptureQualityTests();
   registerPerspectiveTests();
+  registerPerspectiveTransformTests();
   registerRecognitionTests();
   registerWorkerLifecycleTests();
   registerCameraInputTest();

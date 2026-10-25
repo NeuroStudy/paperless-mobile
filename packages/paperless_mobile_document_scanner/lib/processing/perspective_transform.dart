@@ -5,33 +5,74 @@ import 'dart:ui';
 import 'package:opencv_dart/opencv_dart.dart' as cv4;
 import 'package:paperless_mobile_document_scanner/models/document_frame.dart';
 
-/// Applies a perspective (four-point) transform to [imageBytes] so that the
-/// quadrilateral defined by [frame] is warped into an axis-aligned rectangle.
-///
-/// Recovers the rectangle's aspect ratio when the perspective geometry is
-/// reliable; otherwise retains sizing based on the photographed edge lengths.
-///
-/// Returns the transformed image as PNG-encoded bytes.
+/// Rectifies [frame] using pixel-center coordinates and returns PNG bytes.
+/// Integer-aligned rectangles copy their pixels without interpolation.
 Future<Uint8List> perspectiveTransform({
   required Uint8List imageBytes,
   required DocumentFrame frame,
 }) async {
-  final mat = cv4.imdecode(imageBytes, cv4.IMREAD_COLOR);
-  final owned = <cv4.Mat>[mat];
-  cv4.VecPoint2f? srcMat;
-  cv4.VecPoint2f? dstMat;
+  final owned = <cv4.Mat>[];
+  cv4.Mat own(cv4.Mat mat) {
+    owned.add(mat);
+    return mat;
+  }
+
+  cv4.VecPoint2f? srcPoints;
+  cv4.VecPoint2f? dstPoints;
   try {
-    if (mat.isEmpty) {
-      throw const FormatException('Failed to decode document image');
-    }
+    final image = own(cv4.imdecode(imageBytes, cv4.IMREAD_COLOR));
+    if (image.isEmpty) throw const FormatException('Cannot decode scan');
+    final crop = frame.clampedToImage(
+      Size(image.cols.toDouble(), image.rows.toDouble()),
+    );
     final points = [
-      frame.topLeft,
-      frame.topRight,
-      frame.bottomRight,
-      frame.bottomLeft,
+      crop.topLeft,
+      crop.topRight,
+      crop.bottomRight,
+      crop.bottomLeft,
     ];
-    final (width, height) = _outputSize(points, mat.width, mat.height);
-    srcMat = cv4.VecPoint2f.generate(
+
+    // Snap only floating-point noise, never a fractional selection or tilt.
+    const epsilon = 1e-6;
+    final integers = points.every(
+      (p) =>
+          (p.dx - p.dx.round()).abs() <= epsilon &&
+          (p.dy - p.dy.round()).abs() <= epsilon,
+    );
+    final corners = [
+      for (final p in points)
+        Offset(p.dx.roundToDouble(), p.dy.roundToDouble()),
+    ];
+    if (integers &&
+        corners[0].dy == corners[1].dy &&
+        corners[1].dx == corners[2].dx &&
+        corners[2].dy == corners[3].dy &&
+        corners[3].dx == corners[0].dx &&
+        corners[0].dx <= corners[1].dx &&
+        corners[0].dy <= corners[3].dy) {
+      final rect = cv4.Rect(
+        corners[0].dx.toInt(),
+        corners[0].dy.toInt(),
+        (corners[1].dx - corners[0].dx).toInt() + 1,
+        (corners[3].dy - corners[0].dy).toInt() + 1,
+      );
+      try {
+        return _encodePng(own(image.region(rect)));
+      } finally {
+        rect.dispose();
+      }
+    }
+
+    // Retain Alpha 2 metric rectification for non-rectangular crops.
+    final (width, height) = _outputSize(points, image.cols, image.rows);
+    if (width < 2 || height < 2 || !_isConvex(points)) {
+      throw ArgumentError.value(
+        frame,
+        'frame',
+        'Crop must be a convex quadrilateral',
+      );
+    }
+    srcPoints = cv4.VecPoint2f.generate(
       4,
       (i) => cv4.Point2f(points[i].dx, points[i].dy),
     );
@@ -41,38 +82,50 @@ Future<Uint8List> perspectiveTransform({
       Offset(width - 1.0, height - 1.0),
       Offset(0, height - 1.0),
     ];
-    dstMat = cv4.VecPoint2f.generate(
+    dstPoints = cv4.VecPoint2f.generate(
       4,
       (i) => cv4.Point2f(destination[i].dx, destination[i].dy),
     );
-    final transform = cv4.getPerspectiveTransform2f(srcMat, dstMat);
-    owned.add(transform);
-    final warped = await cv4.warpPerspectiveAsync(mat, transform, (
-      width,
-      height,
-    ));
-    owned.add(warped);
-    final (success, encoded) = cv4.imencode('.png', warped);
-    if (!success) {
-      throw Exception('Failed to encode perspective-transformed image');
-    }
-    return encoded;
+    final transform = own(cv4.getPerspectiveTransform2f(srcPoints, dstPoints));
+    final warped = own(
+      await cv4.warpPerspectiveAsync(image, transform, (
+        width,
+        height,
+      ), flags: cv4.INTER_LINEAR),
+    );
+    return _encodePng(warped);
   } finally {
-    for (final resource in owned.reversed) {
-      resource.dispose();
+    dstPoints?.dispose();
+    srcPoints?.dispose();
+    for (final mat in owned.reversed) {
+      mat.dispose();
     }
-    srcMat?.dispose();
-    dstMat?.dispose();
   }
 }
 
+Uint8List _encodePng(cv4.Mat image) {
+  final (success, bytes) = cv4.imencode('.png', image);
+  if (!success) throw const FormatException('Cannot encode cropped scan');
+  return bytes;
+}
+
+bool _isConvex(List<Offset> points) {
+  bool? positive;
+  for (var i = 0; i < 4; i++) {
+    final a = points[i], b = points[(i + 1) % 4], c = points[(i + 2) % 4];
+    final cross = (b.dx - a.dx) * (c.dy - b.dy) - (b.dy - a.dy) * (c.dx - b.dx);
+    if (cross.abs() <= 1e-6) return false;
+    if (positive != null && positive != (cross > 0)) return false;
+    positive = cross > 0;
+  }
+  return true;
+}
+
 (int, int) _outputSize(List<Offset> p, int imageWidth, int imageHeight) {
-  final width = math
-      .max((p[1] - p[0]).distance, (p[2] - p[3]).distance)
-      .round();
-  final height = math
-      .max((p[3] - p[0]).distance, (p[2] - p[1]).distance)
-      .round();
+  final width =
+      math.max((p[1] - p[0]).distance, (p[2] - p[3]).distance).round() + 1;
+  final height =
+      math.max((p[3] - p[0]).distance, (p[2] - p[1]).distance).round() + 1;
   final longest = math.max(width, height);
   final imageLongest = math.max(imageWidth, imageHeight).toDouble();
   final center = Offset(imageWidth / 2, imageHeight / 2);

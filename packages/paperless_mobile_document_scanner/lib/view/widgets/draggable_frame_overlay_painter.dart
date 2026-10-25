@@ -21,11 +21,14 @@ class DraggableFrameOverlayPainter extends CustomPainter {
   /// [activeCornerIndex] is non-null.
   final ui.Image? sourceImage;
 
+  /// The finger position used to place the magnifier during precision mode.
+  final Offset? magnifierAnchor;
+
   /// Radius of the inactive corner circles.
   static const double cornerRadius = 14.0;
 
   /// Radius of the magnifier loupe.
-  static const double _loupeRadius = 60.0;
+  static const double _loupeRadius = 80.0;
 
   /// How much the image is zoomed inside the loupe.
   static const double _loupeZoom = 2.0;
@@ -35,6 +38,7 @@ class DraggableFrameOverlayPainter extends CustomPainter {
     required this.imageSize,
     required this.frameColor,
     this.activeCornerIndex,
+    this.magnifierAnchor,
     this.sourceImage,
   });
 
@@ -48,7 +52,7 @@ class DraggableFrameOverlayPainter extends CustomPainter {
     final offsetY = (size.height - imageSize.height * scale) / 2;
 
     Offset transform(Offset p) =>
-        Offset(p.dx * scale + offsetX, p.dy * scale + offsetY);
+        Offset((p.dx + .5) * scale + offsetX, (p.dy + .5) * scale + offsetY);
 
     final imageCorners = [
       frame.topLeft,
@@ -93,7 +97,7 @@ class DraggableFrameOverlayPainter extends CustomPainter {
 
     for (var i = 0; i < corners.length; i++) {
       if (i == activeCornerIndex && sourceImage != null) {
-        _drawMagnifier(canvas, corners[i], imageCorners[i], i, corners);
+        _drawMagnifier(canvas, size, corners[i], imageCorners[i], i, corners);
       } else {
         canvas.drawCircle(corners[i], cornerRadius, fillPaint);
         canvas.drawCircle(corners[i], cornerRadius, borderPaint);
@@ -106,17 +110,23 @@ class DraggableFrameOverlayPainter extends CustomPainter {
   /// corner are drawn inside the loupe so the user can see the contour.
   void _drawMagnifier(
     Canvas canvas,
+    Size canvasSize,
     Offset widgetPos,
     Offset imagePos,
     int cornerIdx,
     List<Offset> widgetCorners,
   ) {
     final r = _loupeRadius;
+    final anchor = magnifierAnchor ?? widgetPos;
+    final magnifierCenter = Offset(
+      anchor.dx.clamp(r, canvasSize.width - r),
+      (anchor.dy - r - 30).clamp(r, canvasSize.height - r - 30),
+    );
 
     // Clip to a circle.
     canvas.save();
     final loupePath = Path()
-      ..addOval(Rect.fromCircle(center: widgetPos, radius: r));
+      ..addOval(Rect.fromCircle(center: magnifierCenter, radius: r));
     canvas.clipPath(loupePath);
 
     // Draw the zoomed portion of the source image.
@@ -124,11 +134,11 @@ class DraggableFrameOverlayPainter extends CustomPainter {
     final srcRegionHalf = r / _loupeZoom;
     // Source rect in image pixels.
     final srcRect = Rect.fromCenter(
-      center: imagePos,
+      center: imagePos + const Offset(.5, .5),
       width: srcRegionHalf * 2 / 1.0, // in image coords
       height: srcRegionHalf * 2 / 1.0,
     );
-    final dstRect = Rect.fromCircle(center: widgetPos, radius: r);
+    final dstRect = Rect.fromCircle(center: magnifierCenter, radius: r);
 
     canvas.drawImageRect(
       sourceImage!,
@@ -146,8 +156,8 @@ class DraggableFrameOverlayPainter extends CustomPainter {
     // widgetPos maps to center, with zoom factor applied.
     Offset toLoupeSpace(Offset wp) {
       return Offset(
-        widgetPos.dx + (wp.dx - widgetPos.dx) * _loupeZoom,
-        widgetPos.dy + (wp.dy - widgetPos.dy) * _loupeZoom,
+        magnifierCenter.dx + (wp.dx - widgetPos.dx) * _loupeZoom,
+        magnifierCenter.dy + (wp.dy - widgetPos.dy) * _loupeZoom,
       );
     }
 
@@ -170,7 +180,7 @@ class DraggableFrameOverlayPainter extends CustomPainter {
       ..color = Colors.white
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
-    canvas.drawCircle(widgetPos, r, loupeBorderPaint);
+    canvas.drawCircle(magnifierCenter, r, loupeBorderPaint);
 
     // Draw crosshair at center.
     final crossPaint = Paint()
@@ -179,13 +189,13 @@ class DraggableFrameOverlayPainter extends CustomPainter {
       ..strokeWidth = 1.0;
     const crossSize = 8.0;
     canvas.drawLine(
-      Offset(widgetPos.dx - crossSize, widgetPos.dy),
-      Offset(widgetPos.dx + crossSize, widgetPos.dy),
+      Offset(magnifierCenter.dx - crossSize, magnifierCenter.dy),
+      Offset(magnifierCenter.dx + crossSize, magnifierCenter.dy),
       crossPaint,
     );
     canvas.drawLine(
-      Offset(widgetPos.dx, widgetPos.dy - crossSize),
-      Offset(widgetPos.dx, widgetPos.dy + crossSize),
+      Offset(magnifierCenter.dx, magnifierCenter.dy - crossSize),
+      Offset(magnifierCenter.dx, magnifierCenter.dy + crossSize),
       crossPaint,
     );
   }
@@ -196,6 +206,7 @@ class DraggableFrameOverlayPainter extends CustomPainter {
         oldDelegate.imageSize != imageSize ||
         oldDelegate.frameColor != frameColor ||
         oldDelegate.activeCornerIndex != activeCornerIndex ||
+        oldDelegate.magnifierAnchor != magnifierAnchor ||
         oldDelegate.sourceImage != sourceImage;
   }
 }
