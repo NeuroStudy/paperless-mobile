@@ -120,8 +120,9 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
                 ),
             ]);
             if (!isValidDocumentQuad(points) ||
-                (repairFoldedCorners && !_isValidFoldQuad(points)))
+                (repairFoldedCorners && !_isValidFoldQuad(points))) {
               return null;
+            }
             if (points
                     .where(
                       (p) =>

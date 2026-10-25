@@ -111,6 +111,7 @@ dependencies:
     path: packages/paperless_mobile_document_scanner
 
 dev_dependencies:
+  opencv_dart: ^2.2.1+4
   integration_test:
     sdk: flutter
   flutter_test:
