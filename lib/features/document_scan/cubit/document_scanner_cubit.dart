@@ -10,6 +10,9 @@ import 'package:paperless_mobile/core/bloc/transient_error.dart';
 import 'package:paperless_mobile/features/logging/data/logger.dart';
 import 'package:paperless_mobile/core/model/info_message_exception.dart';
 import 'package:paperless_mobile/core/service/file_service.dart';
+import 'package:paperless_mobile/core/store/local_store.dart';
+import 'package:paperless_mobile/core/store/slices/local_user_data.dart';
+import 'package:paperless_mobile/features/document_scan/service/legacy_scan_recovery.dart';
 import 'package:paperless_mobile/features/notifications/services/local_notification_service.dart';
 import 'package:path/path.dart';
 import 'package:rxdart/rxdart.dart';
@@ -21,9 +24,12 @@ const allowedExtensions = ['.jpeg', '.jpg', '.png'];
 
 class DocumentScannerCubit extends Cubit<DocumentScannerState> {
   final LocalNotificationService _notificationService;
+  final LocalStore? _localStore;
+  LegacyScanRecovery? _legacyRecovery;
 
-  DocumentScannerCubit(this._notificationService)
-    : super(const DocumentScannerState());
+  DocumentScannerCubit(this._notificationService, {LocalStore? localStore})
+    : _localStore = localStore,
+      super(const DocumentScannerState());
 
   Future<void> initialize() async {
     logger.fd(
@@ -36,7 +42,9 @@ class DocumentScannerCubit extends Cubit<DocumentScannerState> {
     if (!await tempDir.exists()) {
       await tempDir.create(recursive: true);
     }
-    final allFiles = await tempDir.list().whereType<File>().toList();
+    await _recoverLegacyScans();
+    if (isClosed) return;
+    final allFiles = await _allScanFiles();
     final scans = allFiles
         .where(
           (event) =>
@@ -67,12 +75,59 @@ class DocumentScannerCubit extends Cubit<DocumentScannerState> {
         file.rename('${targetDirectory.path}/${file.uri.pathSegments.last}'),
     ]);
     // Then, we synchronize state with the actual files in the scans directory.
-    final syncedScans = await _validateFiles(
-      targetDirectory.listSync().whereType<File>().toList(),
-    );
+    final syncedScans = await _validateFiles(await _allScanFiles());
     emit(
       DocumentScannerState(status: LoadingStatus.loaded, scans: syncedScans),
     );
+  }
+
+  Future<List<File>> _allScanFiles() async => [
+    ...await FileService.instance.temporaryScansDirectory
+        .list()
+        .whereType<File>()
+        .toList(),
+    ...?await _legacyRecovery?.listRecoveredFiles(),
+  ];
+
+  Future<void> _recoverLegacyScans() async {
+    final store = _localStore;
+    final userId = store?.state.loggedInAppUserId;
+    if (store == null || userId == null) return;
+    final data = store.state.localUserData[userId];
+    if (data == null) return;
+    final applicationDirectory = FileService.instance.uploadDirectory.parent;
+    final recovery = _legacyRecovery = LegacyScanRecovery(
+      sourceRoot: Directory(join(applicationDirectory.path, 'document_scans')),
+      destinationRoot: Directory(
+        join(applicationDirectory.path, 'recovered_scans'),
+      ),
+      userId: userId,
+    );
+    try {
+      final result = await recovery.recover(
+        documents: data.legacyDocumentScans,
+        importedIds: data.recoveredLegacyPageIds,
+      );
+      if (isClosed) return;
+      if (result.importedIds.length != data.recoveredLegacyPageIds.length &&
+          store.state.localUserData.containsKey(userId)) {
+        store.updateUserData(
+          userId,
+          (current) => current.copyWith(
+            recoveredLegacyPageIds: result.importedIds.toList(),
+          ),
+        );
+      }
+      if (result.failures > 0) {
+        logger.fw(
+          'Could not recover ${result.failures} saved scan entries. Original files and metadata were retained.',
+        );
+      }
+    } catch (error) {
+      logger.fw(
+        'Saved scan recovery failed; original files and metadata were retained: $error',
+      );
+    }
   }
 
   void addScan(File file) async {

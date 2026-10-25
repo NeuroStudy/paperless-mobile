@@ -17,6 +17,11 @@ class LocalUserData {
   final bool isBiometricAuthenticationEnabled;
   final LocalUserAppState appState;
 
+  /// Retain newer scanner metadata verbatim while Alpha 2 recovers edited pages.
+  @JsonKey(name: 'document_scans')
+  final List<dynamic> legacyDocumentScans;
+  final List<String> recoveredLegacyPageIds;
+
   const LocalUserData({
     required this.userId,
     required this.serverUrl,
@@ -25,6 +30,8 @@ class LocalUserData {
     this.lastName,
     this.isBiometricAuthenticationEnabled = false,
     this.appState = const LocalUserAppState(),
+    this.legacyDocumentScans = const [],
+    this.recoveredLegacyPageIds = const [],
   });
 
   Map<String, dynamic> toJson() => _$LocalUserDataToJson(this);

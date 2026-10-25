@@ -24,6 +24,9 @@ class LocalStoreState {
       case 1:
         return convertLocalStoreStateV1ToV2(json);
       case 2:
+      // v3 adds scan metadata without changing this envelope. Retain its version
+      // and raw per-account document_scans for copy-based page recovery.
+      case 3:
         return _$LocalStoreStateFromJson(json);
       default:
         throw Exception('Unsupported local store state version: $version');

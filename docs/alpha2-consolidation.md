@@ -62,3 +62,19 @@ checks with physical-phone validation. Before retiring branches, refresh and
 verify the backup, publish archive tags and the maintained branch, set the GitHub
 default, and remove only the three explicitly retired scanner branches and the
 secondary checkout. Do not publish an app release as part of consolidation.
+
+## Saved scan compatibility
+
+Alpha 2 accepts both version-2 and version-3 persisted state, retaining the loaded
+version, account selection, settings and raw `document_scans` metadata. Recovery
+reads only the logged-in account's referenced edited pages under the app-owned
+`document_scans` directory; stored absolute directory paths are not trusted.
+Finished files are copied byte-for-byte into durable account-specific
+`recovered_scans` directories. Originals and metadata remain intact.
+
+Stable page identities and a persisted import ledger prevent duplicate imports
+and keep intentionally deleted recovery copies from reappearing. Interrupted
+copies use `.part` files and retry safely. Missing/corrupt pages are logged and
+remain eligible for retry; uncropped originals are never substituted. The Alpha 2
+flat scan interface is retained, including its existing legacy temporary files;
+the newer grouping and persistent re-edit UI are not imported.

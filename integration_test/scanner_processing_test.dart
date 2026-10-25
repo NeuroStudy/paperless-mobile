@@ -1,4 +1,5 @@
 import 'package:integration_test/integration_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import '../packages/paperless_mobile_document_scanner/test/camera_input_case.dart';
 import '../test/scanner/processing_cases.dart';
@@ -12,6 +13,7 @@ import '../test/scanner/enhancement_refinement_cases.dart';
 import '../test/scanner/perspective_transform_cases.dart';
 
 import '../test/scanner/document_edge_regression_cases.dart';
+import '../test/scanner/legacy_scan_recovery_test.dart' as legacy_scan_recovery;
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -24,4 +26,5 @@ void main() {
   registerDocumentEdgeRegressionTests();
   registerWorkerLifecycleTests();
   registerCameraInputTest();
+  group('legacy scan recovery', legacy_scan_recovery.main);
 }
