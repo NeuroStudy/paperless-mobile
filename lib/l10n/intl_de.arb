@@ -1198,5 +1198,24 @@
   "youHaveNoViewsOnYourDashboardYet": "Du hast noch keine Ansichten zu deinem Dashboard hinzugefügt.",
   "@youHaveNoViewsOnYourDashboardYet": {},
   "youreOffline": "Du bist offline.",
-  "@youreOffline": {}
+  "@youreOffline": {},
+  "chat": "Chat",
+  "chatNewChat": "Neuer Chat",
+  "chatEmptyHint": "Stelle Fragen zu deinen Dokumenten. Die Antworten enthalten Links zu relevanten Quellen.",
+  "chatQuestionHint": "Frage zu deinen Dokumenten stellen…",
+  "chatSend": "Senden",
+  "chatStop": "Stoppen",
+  "chatThinking": "Denke nach…",
+  "chatStopped": "Antwort gestoppt",
+  "chatSources": "Quellen",
+  "chatDocumentTitle": "Dokument {id}",
+  "@chatDocumentTitle": {
+    "placeholders": {
+      "id": { "type": "int" }
+    }
+  },
+  "chatUnavailable": "Der Dokumentenchat benötigt einen kompatiblen Paperless-ngx-Server mit aktivierter KI und aktiviertem Dokumentenindex.",
+  "chatForbidden": "Du hast keine Berechtigung, mit Dokumenten zu chatten.",
+  "chatTimeout": "Die Zeit für die Antwort ist abgelaufen. Bitte versuche es erneut.",
+  "chatResponseFailed": "Die Antwort konnte nicht abgeschlossen werden. Bitte versuche es erneut."
 }

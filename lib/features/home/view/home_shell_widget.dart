@@ -19,6 +19,7 @@ import 'package:paperless_mobile/core/security/session_manager.dart';
 import 'package:paperless_mobile/core/service/dio_file_service.dart';
 import 'package:paperless_mobile/core/store/local_store.dart';
 import 'package:paperless_mobile/core/store/slices/local_user_account.dart';
+import 'package:paperless_mobile/features/chat/cubit/chat_cubit.dart';
 import 'package:paperless_mobile/features/document_scan/cubit/document_scanner_cubit.dart';
 import 'package:paperless_mobile/features/login/view/widgets/login_transition_page.dart';
 import 'package:paperless_mobile/features/tasks/model/pending_tasks_notifier.dart';
@@ -63,6 +64,9 @@ class HomeShellWidget extends StatelessWidget {
         Provider<PaperlessSearchApi>(
           create: (context) => PaperlessSearchApiImpl(client),
         ),
+        Provider<PaperlessChatApi>(
+          create: (context) => PaperlessChatApiImpl(client),
+        ),
         Provider<PaperlessCorrespondentsApi>(
           create: (context) => PaperlessCorrespondentsApiImpl(client),
         ),
@@ -94,6 +98,10 @@ class HomeShellWidget extends StatelessWidget {
       builder: (context, _) {
         return MultiProvider(
           providers: [
+            Provider(
+              create: (context) => ChatCubit(context.read<PaperlessChatApi>()),
+              dispose: (_, cubit) => cubit.close(),
+            ),
             Provider(create: (context) => DocumentRepository(context.read())),
             Provider(create: (context) => SearchRepository(context.read())),
             // For correspondent, document type, tag, storage path labels

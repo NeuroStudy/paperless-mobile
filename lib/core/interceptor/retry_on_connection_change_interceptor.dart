@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:paperless_mobile/api/constants/request_options.dart';
 
 class RetryOnConnectionChangeInterceptor extends Interceptor {
   final Dio dio;
@@ -27,7 +28,8 @@ class RetryOnConnectionChangeInterceptor extends Interceptor {
   }
 
   bool _shouldRetryOnHttpException(DioException err) {
-    return err.type == DioExceptionType.unknown &&
+    return err.requestOptions.extra[skipConnectionRetryKey] != true &&
+        err.type == DioExceptionType.unknown &&
         (err.error is HttpException &&
             (err.message?.contains(
                   'Connection closed before full header was received',

@@ -1,4 +1,5 @@
 export 'authentication_api.dart';
+export 'paperless_chat_api.dart';
 export 'base_crud_api_impl_mixin.dart';
 export 'crud_api.dart';
 export 'custom_fields_api.dart';

@@ -7,4 +7,5 @@ final documentsNavigatorKey = GlobalKey<NavigatorState>();
 final scannerNavigatorKey = GlobalKey<NavigatorState>();
 final labelsNavigatorKey = GlobalKey<NavigatorState>();
 final inboxNavigatorKey = GlobalKey<NavigatorState>();
+final chatNavigatorKey = GlobalKey<NavigatorState>();
 final settingsNavigatorKey = GlobalKey<NavigatorState>();

@@ -22,6 +22,7 @@ class R {
   static const scanner = "scanner";
   static const uploadDocument = "upload";
   static const inbox = "inbox";
+  static const chat = "chat";
   static const documentPreview = "documentPreview";
   static const settings = "settings";
   static const linkedDocuments = "linkedDocuments";

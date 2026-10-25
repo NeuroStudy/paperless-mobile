@@ -1,4 +1,5 @@
 export 'document_filter.dart';
+export 'chat_response.dart';
 export 'labels/labels.dart';
 export 'labels/matching_algorithm.dart';
 export 'exception/paperless_api_exception.dart';

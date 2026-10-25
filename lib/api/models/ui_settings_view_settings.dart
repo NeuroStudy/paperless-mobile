@@ -11,6 +11,7 @@ abstract class UiSettingsViewSettings with _$UiSettingsViewSettings {
     String? appTitle,
     int? trashDelay,
     bool? emailEnabled,
+    @Default(false) bool aiEnabled,
     bool? tourComplete,
     UiSettingsViewSettingsUpdateChecking? updateChecking,
     UiSettingsViewSettingsPermissions? permissions,

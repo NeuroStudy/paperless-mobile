@@ -10,6 +10,7 @@ import 'package:paperless_mobile/features/sharing/cubit/receive_share_cubit.dart
 import 'package:paperless_mobile/features/sharing/view/widgets/event_listener_shell.dart';
 import 'package:paperless_mobile/routing/navigation_keys.dart';
 import 'package:paperless_mobile/routing/routes.dart';
+import 'package:paperless_mobile/routing/routes/chat_route.dart';
 import 'package:paperless_mobile/routing/routes/custom_field_route.dart';
 import 'package:paperless_mobile/routing/routes/documents_route.dart';
 import 'package:paperless_mobile/routing/routes/inbox_route.dart';
@@ -117,6 +118,9 @@ part 'authenticated_route.g.dart';
         ),
         TypedStatefulShellBranch<InboxBranch>(
           routes: [TypedGoRoute<InboxRoute>(path: "/inbox", name: R.inbox)],
+        ),
+        TypedStatefulShellBranch<ChatBranch>(
+          routes: [TypedGoRoute<ChatRoute>(path: "/chat", name: R.chat)],
         ),
       ],
     ),
