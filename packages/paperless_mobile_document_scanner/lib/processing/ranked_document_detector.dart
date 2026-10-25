@@ -7,6 +7,8 @@ import 'package:paperless_mobile_document_scanner/models/document_frame.dart';
 import 'package:paperless_mobile_document_scanner/models/edge_detection_config.dart';
 import 'package:paperless_mobile_document_scanner/utils/utils.dart';
 
+part 'folded_corner_repair.dart';
+
 /// Port of the preserved native PaperProcessor four-point recognizer.
 /// Previous corners affect candidate ranking only; alpha2 owns auto capture.
 Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
@@ -14,6 +16,7 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
   EdgeDetectionConfig config,
   DebugStage debugStage, {
   List<ui.Offset>? previousCorners,
+  bool repairFoldedCorners = false,
 }) async {
   final owned = <cv.Mat>[];
   cv.Mat own(cv.Mat mat) {
@@ -83,7 +86,8 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
     ];
     final edgePixels = edges.data;
     var bestScore = .52;
-    List<ui.Offset>? best;
+    _DocumentCandidate? best;
+    final repairs = <_FoldRepair>[];
     final candidates = <List<ui.Offset>>[];
     for (final proposal in proposals) {
       final expanded = dilation == null
@@ -106,69 +110,170 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
           }
           final contour = contours[candidate.$1];
           final perimeter = cv.arcLength(contour, true);
+          _DocumentCandidate? describe(cv.VecPoint approx) {
+            if (approx.length != 4) return null;
+            final points = orderDocumentCorners([
+              for (final point in approx)
+                ui.Offset(
+                  ((point.x - border) / (w - 1)).clamp(0.0, 1.0),
+                  ((point.y - border) / (h - 1)).clamp(0.0, 1.0),
+                ),
+            ]);
+            if (!isValidDocumentQuad(points) ||
+                (repairFoldedCorners && !_isValidFoldQuad(points)))
+              return null;
+            if (points
+                    .where(
+                      (p) =>
+                          p.dx < .005 ||
+                          p.dy < .005 ||
+                          p.dx > .995 ||
+                          p.dy > .995,
+                    )
+                    .length >
+                2) {
+              return null;
+            }
+            final pixelPoints = [
+              for (final p in points)
+                ui.Offset(p.dx * (w - 1) + border, p.dy * (h - 1) + border),
+            ];
+            final sideSupport = _boundarySupport(
+              edgePixels,
+              edges.cols,
+              edges.rows,
+              pixelPoints,
+            );
+            final support = sideSupport.reduce((a, b) => a + b) / 4;
+            if (support < .35) return null;
+            final area = documentQuadArea(points);
+            final rectangularity =
+                math.min(areaFraction, area) / math.max(areaFraction, area);
+            final agreement = previousCorners == null
+                ? .5
+                : math.max(
+                    0.0,
+                    1 - documentCornerDistance(previousCorners, points) / .15,
+                  );
+            final score =
+                support * .50 +
+                rectangularity * .20 +
+                math.sqrt(area) * .20 +
+                agreement * .10;
+            return _DocumentCandidate(
+              points,
+              pixelPoints,
+              sideSupport,
+              support,
+              score,
+            );
+          }
+
           for (final epsilon in {config.approxEpsilonFactor, .025, .04}) {
             final approx = cv.approxPolyDP(contour, perimeter * epsilon, true);
             try {
-              if (approx.length != 4) continue;
-              final points = orderDocumentCorners([
-                for (final point in approx)
-                  ui.Offset(
-                    ((point.x - border) / (w - 1)).clamp(0.0, 1.0),
-                    ((point.y - border) / (h - 1)).clamp(0.0, 1.0),
-                  ),
-              ]);
-              if (!isValidDocumentQuad(points)) continue;
-              if (points
-                      .where(
-                        (p) =>
-                            p.dx < .005 ||
-                            p.dy < .005 ||
-                            p.dx > .995 ||
-                            p.dy > .995,
-                      )
-                      .length >
-                  2) {
-                continue;
-              }
-              final pixelPoints = [
-                for (final p in points)
-                  ui.Offset(p.dx * (w - 1) + border, p.dy * (h - 1) + border),
-              ];
-              final support = _boundarySupport(
-                edgePixels,
-                edges.cols,
-                edges.rows,
-                pixelPoints,
-              );
-              if (support < .35) continue;
-              final area = documentQuadArea(points);
-              final rectangularity =
-                  math.min(areaFraction, area) / math.max(areaFraction, area);
-              final agreement = previousCorners == null
-                  ? .5
-                  : math.max(
-                      0.0,
-                      1 - documentCornerDistance(previousCorners, points) / .15,
-                    );
-              final score =
-                  support * .50 +
-                  rectangularity * .20 +
-                  math.sqrt(area) * .20 +
-                  agreement * .10;
-              candidates.add(pixelPoints);
-              if (score > bestScore) {
-                bestScore = score;
-                best = points;
+              final direct = describe(approx);
+              if (direct == null) continue;
+              candidates.add(direct.pixels);
+              if (direct.score > bestScore) {
+                bestScore = direct.score;
+                best = direct;
               }
             } finally {
               approx.dispose();
             }
+          }
+
+          // Repairs are retained separately and never enter ordinary ranking.
+          if (!repairFoldedCorners) continue;
+          final hull = cv.convexHull(contour);
+          try {
+            if (hull.total < 5) continue;
+            final hullPoints = cv.VecPoint.fromMat(hull);
+            try {
+              final bevels = <List<ui.Offset>>[];
+              final hullPerimeter = cv.arcLength(hullPoints, true);
+              for (final epsilon in {
+                .01,
+                config.approxEpsilonFactor,
+                .025,
+                .04,
+              }) {
+                final polygon = cv.approxPolyDP(
+                  hullPoints,
+                  hullPerimeter * epsilon,
+                  true,
+                );
+                try {
+                  if (polygon.length == 5) {
+                    bevels.add([
+                      for (final point in polygon)
+                        ui.Offset(point.x.toDouble(), point.y.toDouble()),
+                    ]);
+                  }
+                } finally {
+                  polygon.dispose();
+                }
+              }
+              if (bevels.isEmpty) continue;
+              final reconstructed = cv.approxPolyN(
+                contour,
+                4,
+                epsilon_percentage: .15,
+              );
+              try {
+                if (reconstructed.length != 4) continue;
+                final area = cv.contourArea(reconstructed);
+                if (area > candidate.$2 * 1.15) continue;
+                final quad = describe(reconstructed);
+                if (quad == null ||
+                    quad.support < .65 ||
+                    quad.sides.any((support) => support < .45)) {
+                  continue;
+                }
+                final corner = _foldedCorner(quad.pixels, bevels);
+                if (corner != null) {
+                  repairs.add(
+                    _FoldRepair(
+                      quad,
+                      corner,
+                      math.max(0.0, (area - candidate.$2) / candidate.$2),
+                    ),
+                  );
+                }
+              } finally {
+                reconstructed.dispose();
+              }
+            } finally {
+              hullPoints.dispose();
+            }
+          } finally {
+            hull.dispose();
           }
         }
       } finally {
         hierarchy.dispose();
         contours.dispose();
       }
+    }
+    // Ordinary recognition chooses the page. A repair may only move one of
+    // that page's corners; mask-backed fallback is reserved for no detection.
+    final selected = !repairFoldedCorners
+        ? best?.normalized
+        : best == null
+        ? _foldedPageFallback(repairs, mask, w, h, border)
+        : _repairSelectedPage(
+            best,
+            repairs,
+            edgePixels,
+            edges.cols,
+            edges.rows,
+          );
+    if (selected != null && !identical(selected, best?.normalized)) {
+      candidates.add([
+        for (final p in selected)
+          ui.Offset(p.dx * (w - 1) + border, p.dy * (h - 1) + border),
+      ]);
     }
     ui.Image? debug;
     if (debugStage != DebugStage.none) {
@@ -203,9 +308,9 @@ Future<(DocumentFrame?, ui.Image?)> detectRankedDocument(
       }
       debug = await canvas.toUiImage();
     }
-    if (best == null) return (null, debug);
+    if (selected == null) return (null, debug);
     final points = [
-      for (final p in best)
+      for (final p in selected)
         ui.Offset(p.dx * (input.cols - 1), p.dy * (input.rows - 1)),
     ];
     return (
@@ -309,20 +414,22 @@ double _gradientThreshold(cv.Mat gray) {
   }
 }
 
-double _boundarySupport(
+List<double> _boundarySupport(
   List<int> edges,
   int width,
   int height,
-  List<ui.Offset> points,
-) {
-  var hits = 0;
+  List<ui.Offset> points, {
+  int radius = 3,
+}) {
+  final support = <double>[];
   for (var side = 0; side < 4; side++) {
+    var hits = 0;
     final a = points[side], b = points[(side + 1) % 4];
     for (var step = 1; step <= 32; step++) {
       final p = ui.Offset.lerp(a, b, step / 33)!;
       var found = false;
-      for (var dy = -3; dy <= 3 && !found; dy++) {
-        for (var dx = -3; dx <= 3; dx++) {
+      for (var dy = -radius; dy <= radius && !found; dy++) {
+        for (var dx = -radius; dx <= radius; dx++) {
           final x = p.dx.round() + dx, y = p.dy.round() + dy;
           if (x >= 0 &&
               x < width &&
@@ -336,6 +443,18 @@ double _boundarySupport(
       }
       if (found) hits++;
     }
+    support.add(hits / 32);
   }
-  return hits / 128;
+  return support;
+}
+
+// Repair geometry is stricter without changing Alpha 2 live acceptance.
+bool _isValidFoldQuad(List<ui.Offset> points) {
+  if (!isValidDocumentQuad(points)) return false;
+  for (var i = 0; i < 4; i++) {
+    final side = (points[i] - points[(i + 1) % 4]).distance;
+    final opposite = (points[(i + 2) % 4] - points[(i + 3) % 4]).distance;
+    if (side < opposite * .08) return false;
+  }
+  return true;
 }

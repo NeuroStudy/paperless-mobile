@@ -24,6 +24,7 @@ Future<DocumentFrame?> detectEdgesFromImageBytes(
       final (frame, debugImage) = await detectDocumentEdges(
         rgba,
         config: config,
+        repairFoldedCorners: true,
       );
       debugImage?.dispose();
       return frame;

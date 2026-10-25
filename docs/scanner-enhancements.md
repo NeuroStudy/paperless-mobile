@@ -293,3 +293,16 @@ bounds exactly, including single rows/columns and full-image crops. Fractional
 and perspective selections still use bilinear interpolation and retain Alpha 2
 aspect-ratio recovery. Capture fallback mapping and crop handles use the same
 coordinates. The Alpha 2 crop layout is retained; no reset control was imported.
+
+## Alpha 2 consolidation: folded corners
+
+Adapted from `5c477514` after ordinary Alpha 2 page selection. Still images may
+extend one folded corner; the other three anchors remain exact. Reconstruction
+needs five-sided evidence, at most 15% added area and 35% adjoining-side
+extrapolation, plus an improvement of five percentage points in side support.
+A no-page fallback requires 85% agreement with enclosed paper. Ambiguous repairs
+retain the ordinary selection. Live Gaussian processing, luminance transport,
+previous-corner ranking and overlay/capture tracking remain Alpha 2
+implementations. Stricter repair-shape validation is confined to still analysis.
+Source tests were adapted to explicitly start the existing Alpha 2 worker and
+compare matching detector presets; no camera-recovery architecture was imported.

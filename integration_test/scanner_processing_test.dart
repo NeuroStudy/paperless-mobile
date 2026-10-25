@@ -11,6 +11,8 @@ import '../test/scanner/enhancement_refinement_cases.dart';
 
 import '../test/scanner/perspective_transform_cases.dart';
 
+import '../test/scanner/document_edge_regression_cases.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   registerProcessingTests();
@@ -19,6 +21,7 @@ void main() {
   registerPerspectiveTests();
   registerPerspectiveTransformTests();
   registerRecognitionTests();
+  registerDocumentEdgeRegressionTests();
   registerWorkerLifecycleTests();
   registerCameraInputTest();
 }

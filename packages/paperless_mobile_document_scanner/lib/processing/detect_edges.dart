@@ -169,9 +169,11 @@ Future<(DocumentFrame?, ui.Image?)> detectDocumentEdges(
   EdgeDetectionConfig config = EdgeDetectionConfig.fourPoint,
   DebugStage debugStage = DebugStage.none,
   List<ui.Offset>? previousCorners,
+  bool repairFoldedCorners = false,
 }) => detectRankedDocument(
   mat,
   config,
   debugStage,
   previousCorners: previousCorners,
+  repairFoldedCorners: repairFoldedCorners,
 );
