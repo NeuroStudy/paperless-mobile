@@ -12,13 +12,17 @@ class EnhancementProfile {
   final Uint8List? protection;
   final double contrast;
 
+  /// Bounded analysis confidence, 0 (protected) to 255 (eligible background).
+  final Uint8List? cleanup;
+
   const EnhancementProfile(
     this.width,
     this.height,
     this.paper,
     this.protection,
-    this.contrast,
-  );
+    this.contrast, {
+    this.cleanup,
+  });
 }
 
 /// Analysis is shared by preview, rotation, toggles and the saved result.
@@ -119,7 +123,10 @@ EnhancementProfile _analyze(Uint8List bytes) {
           high = 0.0,
           colorLow = 10.0,
           colorHigh = 0.0,
-          colorTotal = 0.0;
+          colorTotal = 0.0,
+          rawLow = 10.0,
+          rawHigh = 0.0,
+          rawTotal = 0.0;
       var difference = 0;
       for (var c = 0; c < 3; c++) {
         final ratio = fine[i * 3 + c] / math.max(1, reference[c]);
@@ -130,9 +137,16 @@ EnhancementProfile _analyze(Uint8List bytes) {
         colorLow = math.min(colorLow, color);
         colorHigh = math.max(colorHigh, color);
         colorTotal += color;
+        // Closing can erase narrow colored strips before broad detection sees
+        // them. Exclude the original reference-normalized pixels as well.
+        final raw = pixels[i * 3 + c] / math.max(1, reference[c]);
+        rawLow = math.min(rawLow, raw);
+        rawHigh = math.max(rawHigh, raw);
+        rawTotal += raw;
       }
       if (high - low > .12 || difference > 18) invalid[i] = 1;
-      if ((colorHigh - colorLow) / math.max(.01, colorTotal / 3) > .35) {
+      if ((colorHigh - colorLow) / math.max(.01, colorTotal / 3) > .35 ||
+          (rawHigh - rawLow) / math.max(.01, rawTotal / 3) > .35) {
         content[i] = 1;
       }
     }
@@ -226,12 +240,14 @@ EnhancementProfile _analyze(Uint8List bytes) {
         : 1.08;
     final map = own(cv.Mat.fromList(h, w, cv.MatType.CV_8UC3, paper));
     final smoothed = own(cv.medianBlur(map, 3));
+    final paperMap = Uint8List.fromList(smoothed.data);
     return EnhancementProfile(
       w,
       h,
-      Uint8List.fromList(smoothed.data),
+      paperMap,
       protection,
       contrast,
+      cleanup: _cleanupMap(pixels, paperMap, protection, w, h),
     );
   } finally {
     for (final mat in owned.reversed) {
@@ -253,6 +269,7 @@ Uint8List _render(Uint8List bytes, EnhancementProfile? profile) {
     } else {
       final p = profile!;
       final protection = p.protection;
+      final cleanup = p.cleanup;
       final sx = p.width / mat.cols, sy = p.height / mat.rows;
       // Interpolate the small map directly, keeping float storage independent of export size.
       for (var y = 0; y < mat.rows; y++) {
@@ -292,6 +309,20 @@ Uint8List _render(Uint8List bytes, EnhancementProfile? profile) {
           var factor = t * t * (3 - 2 * t);
           if (protection != null) {
             factor = math.max(factor, sample(protection, 1, 0));
+          }
+          // Recheck the actual full-size pixel: analysis may have averaged away
+          // dark cores or color. One deficit factor keeps all RGB channels together.
+          final darkness = 255 - minimum;
+          final maximum = math.max(blue, math.max(green, red));
+          if (cleanup != null &&
+              darkness >= 8 &&
+              darkness <= 60 &&
+              maximum - minimum <= 18) {
+            final lift =
+                math.min(math.min(darkness * .5, 20.0), darkness - 8) *
+                ((60 - darkness) / 12).clamp(0.0, 1.0);
+            final confidence = sample(cleanup, 1, 0) / 255;
+            factor *= 1 - lift / darkness * confidence;
           }
           pixels[i] = (255 + (blue - 255) * factor * p.contrast).round().clamp(
             0,
@@ -373,16 +404,19 @@ void _protectPanels(
   }
 }
 
-Uint8List _expand(Uint8List mask, int w, int h, int radius) {
+Uint8List _expand(
+  Uint8List mask,
+  int w,
+  int h,
+  int radius, {
+  int? verticalRadius,
+}) {
   final expanded = Uint8List.fromList(mask);
+  final ry = verticalRadius ?? radius;
   for (var i = 0; i < mask.length; i++) {
     if (mask[i] == 0) continue;
     final x = i % w, y = i ~/ w;
-    for (
-      var yy = math.max(0, y - radius);
-      yy <= math.min(h - 1, y + radius);
-      yy++
-    ) {
+    for (var yy = math.max(0, y - ry); yy <= math.min(h - 1, y + ry); yy++) {
       for (
         var xx = math.max(0, x - radius);
         xx <= math.min(w - 1, x + radius);
@@ -393,6 +427,217 @@ Uint8List _expand(Uint8List mask, int w, int h, int radius) {
     }
   }
   return expanded;
+}
+
+/// Frozen workbench v1: classify normalized analysis pixels, never export-sized
+/// float images. Small uncertain marks and sparse writing favor preservation.
+Uint8List _cleanupMap(
+  Uint8List pixels,
+  Uint8List paper,
+  Uint8List contentProtection,
+  int w,
+  int h,
+) {
+  final count = w * h;
+  final strong = Uint8List(count), weak = Uint8List(count);
+  final eligible = Uint8List(count), gray = Uint8List(count);
+  for (var i = 0; i < count; i++) {
+    var low = 255.0, high = 0.0, total = 0.0;
+    for (var c = 0; c < 3; c++) {
+      final value = math.min(
+        255.0,
+        pixels[i * 3 + c] * 255 / math.max(63.75, paper[i * 3 + c]),
+      );
+      low = math.min(low, value);
+      high = math.max(high, value);
+      total += value;
+    }
+    final darkness = 255 - low;
+    if (darkness >= 64) strong[i] = 1;
+    if (darkness >= 8) weak[i] = 1;
+    if (darkness >= 8 && darkness <= 60 && high - low <= 18) eligible[i] = 1;
+    gray[i] = (total / 3).round();
+  }
+  var protected = _expand(strong, w, h, 2);
+  for (var i = 0; i < count; i++) {
+    if (contentProtection[i] != 0) protected[i] = 1;
+  }
+  // Join nearby strong glyphs into local text fragments. Padding includes weak
+  // edges, aligned faint letters, decimal points and adjacent punctuation.
+  _visitComponents(_expand(strong, w, h, 4, verticalRadius: 1), w, h, (
+    members,
+    length,
+    x,
+    y,
+    cw,
+    ch,
+  ) {
+    if (cw > w * .8 || ch > h * .15) return;
+    for (var yy = math.max(0, y - 3); yy < math.min(h, y + ch + 3); yy++) {
+      for (var xx = math.max(0, x - 3); xx < math.min(w, x + cw + 3); xx++) {
+        protected[yy * w + xx] = 1;
+      }
+    }
+  });
+
+  // A residual shadow can connect faint words to the background. Recover their
+  // local strokes independently, including pale rules crossing a dirt patch.
+  final localInk = Uint8List(count);
+  final owned = <cv.Mat>[];
+  cv.Mat own(cv.Mat mat) {
+    owned.add(mat);
+    return mat;
+  }
+
+  try {
+    final mat = own(cv.Mat.fromList(h, w, cv.MatType.CV_8UC1, gray));
+    final kernel = own(cv.getStructuringElement(cv.MORPH_RECT, (5, 5)));
+    final closed = own(
+      cv.morphologyEx(
+        mat,
+        cv.MORPH_CLOSE,
+        kernel,
+        borderType: cv.BORDER_REPLICATE,
+      ),
+    ).data;
+    for (var i = 0; i < count; i++) {
+      if (closed[i] - gray[i] >= 3 && weak[i] != 0) localInk[i] = 1;
+    }
+  } finally {
+    for (final mat in owned.reversed) {
+      mat.dispose();
+    }
+  }
+  final residual = Uint8List(count);
+  for (var i = 0; i < count; i++) {
+    if (weak[i] != 0 && protected[i] == 0) residual[i] = 1;
+  }
+  var elongated = Uint8List(count);
+  _visitComponents(residual, w, h, (members, length, x, y, cw, ch) {
+    if (math.max(cw, ch) >= 24 &&
+        (cw >= 8 * ch || ch >= 8 * cw) &&
+        length >= cw * ch * .45) {
+      for (var j = 0; j < length; j++) {
+        elongated[members[j]] = 1;
+      }
+    }
+  });
+  // Do not mistake tiny morphological fragments around an irregular fold for
+  // punctuation. Sparse signatures are excluded from this dense-fold guard.
+  elongated = _expand(elongated, w, h, 2);
+  final glyphs = Uint8List(count);
+  _visitComponents(localInk, w, h, (members, length, x, y, cw, ch) {
+    var preserve = _stableRule(members, length, w, x, y, cw, ch);
+    if (!preserve && ch < 24 && cw <= 8 * ch && cw < w * .8) {
+      preserve = true;
+      for (var j = 0; j < length; j++) {
+        if (elongated[members[j]] != 0) {
+          preserve = false;
+          break;
+        }
+      }
+    }
+    if (preserve) {
+      for (var j = 0; j < length; j++) {
+        glyphs[members[j]] = 1;
+      }
+    }
+  });
+  final glyphProtection = _expand(glyphs, w, h, 2);
+  for (var i = 0; i < count; i++) {
+    if (glyphProtection[i] != 0) protected[i] = 1;
+    residual[i] = weak[i] != 0 && protected[i] == 0 ? 1 : 0;
+  }
+  _visitComponents(residual, w, h, (members, length, x, y, cw, ch) {
+    if (math.max(cw, ch) < 24 ||
+        length < cw * ch * .45 ||
+        _stableRule(members, length, w, x, y, cw, ch)) {
+      for (var j = 0; j < length; j++) {
+        protected[members[j]] = 1;
+      }
+    }
+  });
+  protected = _expand(protected, w, h, 1);
+  final near = _expand(protected, w, h, 1);
+  final far = _expand(protected, w, h, 2);
+  final cleanup = Uint8List(count);
+  for (var i = 0; i < count; i++) {
+    if (eligible[i] == 0 || protected[i] != 0) continue;
+    cleanup[i] = near[i] != 0 ? 85 : (far[i] != 0 ? 170 : 255);
+  }
+  return cleanup;
+}
+
+/// Four-connected components, with scratch storage bounded by analysis size.
+/// The visitor consumes the reused queue synchronously.
+void _visitComponents(
+  Uint8List mask,
+  int w,
+  int h,
+  void Function(Int32List, int, int, int, int, int) visit,
+) {
+  final visited = Uint8List(mask.length), queue = Int32List(mask.length);
+  for (var start = 0; start < mask.length; start++) {
+    if (visited[start] != 0 || mask[start] == 0) continue;
+    var head = 0, tail = 1, x0 = w, y0 = h, x1 = 0, y1 = 0;
+    queue[0] = start;
+    visited[start] = 1;
+    while (head < tail) {
+      final i = queue[head++], x = i % w, y = i ~/ w;
+      x0 = math.min(x0, x);
+      y0 = math.min(y0, y);
+      x1 = math.max(x1, x);
+      y1 = math.max(y1, y);
+      for (final next in _neighbors(i, w, h)) {
+        if (visited[next] == 0 && mask[next] != 0) {
+          visited[next] = 1;
+          queue[tail++] = next;
+        }
+      }
+    }
+    visit(queue, tail, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+  }
+}
+
+bool _stableRule(
+  Int32List members,
+  int length,
+  int w,
+  int x,
+  int y,
+  int cw,
+  int ch,
+) {
+  final horizontal = cw >= 24 && cw >= 4 * ch;
+  final vertical = ch >= 24 && ch >= 4 * cw;
+  if (!horizontal && !vertical) return false;
+  final span = horizontal ? cw : ch;
+  final counts = Int32List(span), totals = Int32List(span);
+  for (var j = 0; j < length; j++) {
+    final px = members[j] % w - x, py = members[j] ~/ w - y;
+    final major = horizontal ? px : py, minor = horizontal ? py : px;
+    counts[major]++;
+    totals[major] += minor;
+  }
+  final centers = <double>[], thickness = <double>[];
+  for (var j = 0; j < span; j++) {
+    if (counts[j] == 0) continue;
+    centers.add(totals[j] / counts[j]);
+    thickness.add(counts[j].toDouble());
+  }
+  if (centers.length < span * .95) return false;
+  centers.sort();
+  thickness.sort();
+  // Intersections may occupy at most 10% of a rule's span. Both center and
+  // thickness must remain stable; straight but irregular folds stay eligible.
+  return _quantile(centers, .95) - _quantile(centers, .05) <= .65 &&
+      _quantile(thickness, .95) - _quantile(thickness, .05) <= 1;
+}
+
+double _quantile(List<double> sorted, double fraction) {
+  final position = (sorted.length - 1) * fraction;
+  final lower = position.floor(), upper = position.ceil();
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
 
 void _fillPaper(Uint8List paper, Uint8List missing, int w, int h) {

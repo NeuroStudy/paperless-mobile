@@ -276,3 +276,12 @@ processing, perspective, recognition, lifecycle/capture and color-quality checks
 pass on the physical S25 Ultra. Its production scanner capture reports
 1080x1920. Analysis of the changed source/test files has no findings. The normal
 debug app is rebuilt and restored after integration runs.
+
+## Alpha 2 consolidation: color refinement
+
+Ported from `e16ff893`. The enhancement implementation had the identical starting
+blob on both branches. Protect reference-normalized original pixels so narrow
+colored strips are not treated as paper; apply bounded background cleanup while
+preserving faint glyphs, punctuation, signatures and rules. Analysis remains
+bounded and crop-specific; Enhance stays off initially. The six refinement
+regressions are shared with the Android harness.

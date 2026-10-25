@@ -7,9 +7,12 @@ import '../test/scanner/recognition_cases.dart';
 import '../test/scanner/worker_lifecycle_cases.dart';
 import '../test/scanner/capture_quality_cases.dart';
 
+import '../test/scanner/enhancement_refinement_cases.dart';
+
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   registerProcessingTests();
+  registerEnhancementRefinementTests();
   registerCaptureQualityTests();
   registerPerspectiveTests();
   registerRecognitionTests();
