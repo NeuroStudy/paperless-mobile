@@ -8,10 +8,12 @@ import 'package:paperless_mobile/features/scanner/models/auto_capture_config.dar
 import 'package:paperless_mobile/features/scanner/view/document_scanner_view.dart';
 
 import '../test/scanner/processing_cases.dart';
+import '../test/scanner/enhancement_refinement_cases.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   registerProcessingTests();
+  registerEnhancementRefinementTests();
   testWidgets(
     'live camera initializes, streams and captures a decodable image',
     (tester) async {
