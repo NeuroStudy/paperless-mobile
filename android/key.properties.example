@@ -1,0 +1,7 @@
+# Copy to key.properties and supply your existing release keystore credentials.
+# Relative paths start at android/app, matching the CI signing action.
+# On Windows, use forward slashes (C:/keys/upload-keystore.jks) or escaped backslashes.
+storeFile=upload-keystore.jks
+storePassword=
+keyAlias=upload
+keyPassword=

@@ -65,31 +65,39 @@ If you want to manually install dependencies and build generated files, you can 
 
 ## Build release version
 
-In order to build a release version, you have to...
+### Local testing
 
-1. Exchange the signing configuration in android/app/build.gradle from
+Add the following line to `android/local.properties` (keep its existing SDK settings):
 
-```gradle
-buildTypes {
-    release {
-        signingConfig signingConfigs.release
-    }
-}
+```properties
+useDebugSigning=true
 ```
 
-to
+This ignored, checkout-specific setting persists across builds and signs release APKs
+with the machine's debug key. Gradle prints a warning for these artifacts; use them
+only for local testing. No changes to the Gradle build files are needed. An installed
+app signed with a different key cannot be updated with this APK.
 
-```gradle
-buildTypes {
-    release {
-        signingConfig signingConfigs.debug
-    }
-}
-```
+For a single PowerShell session, you can instead set
+`$env:ORG_GRADLE_PROJECT_useDebugSigning = 'true'`. Direct Gradle commands also accept
+`-PuseDebugSigning=true`; an explicit Gradle property overrides `local.properties`.
 
-or use your own signing configuration as described in https://docs.flutter.dev/deployment/android#signing-the-app and leave the `build.gradle` as is.
+### Distribution releases
 
-2. Build the app with release profile (here for android):
+Remove `useDebugSigning=true` (or set it to `false`), copy
+`android/key.properties.example` to `android/key.properties`, and fill in all four
+properties using your existing release keystore. Relative `storeFile` paths start
+at `android/app`, matching CI. On Windows, use forward slashes or escaped backslashes
+in the keystore path. Keep credentials and keystores out of version control.
+
+Release builds without the local testing opt-in validate missing properties and
+keystore paths before app compilation. Debug builds do not require release keys.
+See the [Flutter signing instructions](https://docs.flutter.dev/deployment/android#sign-the-app)
+for keystore setup. CI continues to use its existing signing action.
+
+### Build and install
+
+1. Build the app with release profile (here for android):
 
 ```sh
 flutter build apk
@@ -97,7 +105,7 @@ flutter build apk
 
 The --release flag is implicit for the build command. You can also run this command with --split-per-abi, which will generate three separate (smaller) binaries.
 
-3. Install the app to your device (when omitting the `--split-per-abi` flag)
+2. Install the app to your device (when omitting the `--split-per-abi` flag)
 
 ```sh
 flutter install
@@ -106,5 +114,5 @@ flutter install
 or when you built with `--split-per-abi`
 
 ```sh
-flutter install --use-application-binary=build/pp/outputs/flutter-apk/<apk_file_name>.apk
+flutter install --use-application-binary=build/app/outputs/flutter-apk/<apk_file_name>.apk
 ```
