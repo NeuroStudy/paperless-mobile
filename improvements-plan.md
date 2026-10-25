@@ -14,9 +14,10 @@ capture, or background/resume failure occurs. It is not a prerequisite for the
 other planned ports. Do not bring it in indirectly when adapting their tests.
 
 The development baseline is `codex/scan-enhancement-alpha2`, initially at
-`9bb8c8d5`. The intended single working folder after consolidation is
-`D:\DEV\paperless-mobile`. Preserve the source commit in the consolidation
-backup/archive before retiring its development branch.
+`9bb8c8d5`. The single maintained working folder is `D:\DEV\paperless-mobile`. The original
+source commit is preserved by `archive/2026-10-25/scan-enhancement-v5` and the
+private consolidation Git bundles. The old development branch has been retired;
+inspect the archive tag without switching the maintained development branch.
 
 ## Goal and reason for deferral
 
