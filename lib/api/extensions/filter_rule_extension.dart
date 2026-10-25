@@ -1,7 +1,7 @@
-import 'package:paperless_mobile/api/constants/filter_rules.dart';
 import 'package:paperless_mobile/api/converters/local_date_time_json_converter.dart';
 import 'package:paperless_mobile/api/models/query_parameters/asn_query_parameter.dart';
 import 'package:paperless_mobile/api/paperless_api.dart';
+import 'package:paperless_mobile/api/utils/fulltext_query.dart';
 import 'package:paperless_mobile/features/logging/data/logger.dart';
 
 extension FilterRuleToDocumentFilterExtension on SavedViewFilterRule {
@@ -283,57 +283,14 @@ extension FilterRuleToDocumentFilterExtension on SavedViewFilterRule {
   }
 
   DocumentFilter _parseFulltextQuery(DocumentFilter filter) {
-    assert(value != null);
-    final extendedQueryValues = value!.split(",").reversed;
-
-    for (final query in extendedQueryValues) {
-      if (RegExp(lastNDateRangeQueryRegex).hasMatch(query)) {
-        filter = _parseRelativeDateRangeQuery(query, filter);
-      } else {
-        filter = filter.copyWith(query: TextQuery.extended(query));
-      }
-    }
-    return filter;
-  }
-
-  DocumentFilter _parseRelativeDateRangeQuery(
-    String query,
-    final DocumentFilter filter,
-  ) {
-    DocumentFilter newFilter = filter;
-    final matches = RegExp(lastNDateRangeQueryRegex).allMatches(query);
-    for (final match in matches) {
-      final field = match.namedGroup('field')!;
-      final n = int.parse(match.namedGroup('n')!);
-      final unit = match.namedGroup('unit')!;
-      switch (field) {
-        case 'created':
-          newFilter = newFilter.copyWith(
-            created: RelativeDateRangeQuery(
-              n,
-              DateRangeUnit.values.byName(unit),
-            ),
-            query: newFilter.query.copyWith(queryType: QueryType.extended),
-          );
-          break;
-        case 'added':
-          newFilter = newFilter.copyWith(
-            added: RelativeDateRangeQuery(n, DateRangeUnit.values.byName(unit)),
-            query: newFilter.query.copyWith(queryType: QueryType.extended),
-          );
-          break;
-        case 'modified':
-          newFilter = newFilter.copyWith(
-            modified: RelativeDateRangeQuery(
-              n,
-              DateRangeUnit.values.byName(unit),
-            ),
-            query: newFilter.query.copyWith(queryType: QueryType.extended),
-          );
-          break;
-      }
-    }
-    return newFilter;
+    if (value == null) return filter;
+    final parsed = parseFulltextQuery(value!);
+    return filter.copyWith(
+      query: TextQuery.extended(parsed.queryText ?? filter.query.queryText),
+      created: parsed.dates[DateRangeQueryField.created] ?? filter.created,
+      added: parsed.dates[DateRangeQueryField.added] ?? filter.added,
+      modified: parsed.dates[DateRangeQueryField.modified] ?? filter.modified,
+    );
   }
 }
 
@@ -625,14 +582,15 @@ extension ToFilterRuleExtension on DocumentFilter {
         break;
     }
 
-    //Join values of all extended filter rules if exist
+    // A full-text rule is one Paperless expression, including relative dates.
     if (filterRules
         .where((e) => e.ruleType == RuleTypeEnum.fulltextQuery)
         .isNotEmpty) {
-      final mergedFulltextQueryRule = filterRules
-          .where((r) => r.ruleType == RuleTypeEnum.fulltextQuery)
-          .map((e) => e.value)
-          .join(",");
+      final mergedFulltextQueryRule = composeFulltextQuery(
+        filterRules
+            .where((r) => r.ruleType == RuleTypeEnum.fulltextQuery)
+            .map((e) => e.value!),
+      );
       filterRules
         ..removeWhere(
           (element) => element.ruleType == RuleTypeEnum.fulltextQuery,

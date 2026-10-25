@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:paperless_mobile/api/paperless_api.dart';
 import 'package:paperless_mobile/api/models/query_parameters/asn_query_parameter.dart';
+import 'package:paperless_mobile/api/utils/fulltext_query.dart';
 
 part 'document_filter.freezed.dart';
 part 'document_filter.g.dart';
@@ -61,11 +62,11 @@ abstract class DocumentFilter with _$DocumentFilter {
           ? archiveSerialNumber!.toQueryParameter().entries
           : []),
       ...tags.toQueryParameter().entries,
-      ...added.toQueryParameter(DateRangeQueryField.added).entries,
+      ...query.toQueryParameter().entries,
       ...created.toQueryParameter(DateRangeQueryField.created).entries,
+      ...added.toQueryParameter(DateRangeQueryField.added).entries,
       ...modified.toQueryParameter(DateRangeQueryField.modified).entries,
       ...owner.toQueryParameter('owner').entries,
-      ...query.toQueryParameter().entries,
       if (sortField != null)
         MapEntry('ordering', '${sortOrder.queryString}${sortField!.value}'),
       if (moreLike != null) MapEntry('more_like_id', moreLike),
@@ -79,7 +80,9 @@ abstract class DocumentFilter with _$DocumentFilter {
     final queryParams = groupBy(params, (e) => e.key).map(
       (key, entries) => MapEntry(
         key,
-        entries.length == 1
+        key == 'query'
+            ? composeFulltextQuery(entries.map((e) => e.value as String))
+            : entries.length == 1
             ? entries.first.value
             : entries.map((e) => e.value).join(","),
       ),
