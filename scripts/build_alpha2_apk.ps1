@@ -67,7 +67,9 @@ try {
     & $dartExecutable run build_runner build --delete-conflicting-outputs
     if ($LASTEXITCODE -ne 0) { throw 'Source generation failed.' }
     Assert-Alpha2Source
-    $buildArguments = @('build', 'apk', "--$Mode", '--no-pub', "--target-platform=$TargetPlatform",
+    # Flutter 3.41 regenerates mode-specific plugin registration only with pub
+    # enabled. --no-pub can retain integration_test after a debug test build.
+    $buildArguments = @('build', 'apk', "--$Mode", "--target-platform=$TargetPlatform",
         "--dart-define=BUILD_GIT_SHA=$revision", "--dart-define=BUILD_SOURCE_BRANCH=$canonicalBranch")
     & $flutterExecutable @buildArguments
     if ($LASTEXITCODE -ne 0) { throw 'APK build failed.' }
