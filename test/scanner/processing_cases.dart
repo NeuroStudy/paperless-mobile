@@ -15,6 +15,7 @@ import 'package:paperless_mobile/features/scanner/processing/image_edit.dart';
 import 'package:paperless_mobile/features/scanner/view/image_edit_view.dart';
 import 'package:paperless_mobile/generated/l10n/app_localizations.dart';
 
+import 'document_edge_regression_cases.dart';
 import 'perspective_transform_cases.dart';
 
 image.Image _page() {
@@ -90,6 +91,7 @@ Uint8List _png(image.Image picture) =>
 
 /// Cases and numerical limits carried forward from the v4 native scanner suites.
 void registerProcessingTests() {
+  registerDocumentEdgeRegressionTests();
   registerPerspectiveTransformTests();
   test(
     'live detector supplies stable corners to auto capture and resets on loss',
@@ -222,6 +224,145 @@ void registerProcessingTests() {
       }
     },
   );
+  test('reconstructs folded page corners without changing perspective', () async {
+    for (final points in [
+      [
+        const Offset(95, 70),
+        const Offset(510, 100),
+        const Offset(550, 700),
+        const Offset(60, 740),
+      ],
+      [
+        const Offset(230, 60),
+        const Offset(370, 60),
+        const Offset(370, 740),
+        const Offset(230, 740),
+      ],
+      [
+        const Offset(40, 240),
+        const Offset(560, 240),
+        const Offset(560, 560),
+        const Offset(40, 560),
+      ],
+    ]) {
+      for (var corner = 0; corner < 4; corner++) {
+        for (final fold in [.12, .28]) {
+          final scene = image.Image(width: 600, height: 800);
+          final background = image.ColorRgb8(45, 45, 45);
+          image.fill(scene, color: background);
+          // Slightly offset pages behind the top page model a stapled stack.
+          image.fillPolygon(
+            scene,
+            vertices: [
+              for (final point in points)
+                image.Point(point.dx.round() + 5, point.dy.round() + 5),
+            ],
+            color: image.ColorRgb8(165, 165, 165),
+          );
+          image.fillPolygon(
+            scene,
+            vertices: [
+              for (final point in points)
+                image.Point(point.dx.round(), point.dy.round()),
+            ],
+            color: image.ColorRgb8(245, 245, 245),
+          );
+          final cutA = Offset.lerp(
+            points[corner],
+            points[(corner + 3) % 4],
+            fold,
+          )!;
+          final cutB = Offset.lerp(
+            points[corner],
+            points[(corner + 1) % 4],
+            fold,
+          )!;
+          image.fillPolygon(
+            scene,
+            vertices: [
+              image.Point(points[corner].dx.round(), points[corner].dy.round()),
+              image.Point(cutA.dx.round(), cutA.dy.round()),
+              image.Point(cutB.dx.round(), cutB.dy.round()),
+            ],
+            color: background,
+          );
+          final bytes = _png(
+            fold == .28 ? _shadow(scene, .25, warm: false) : scene,
+          );
+          for (final config in [
+            EdgeDetectionConfig.fast,
+            EdgeDetectionConfig.accurate,
+          ]) {
+            final frame = await detectEdgesFromImageBytes(
+              bytes,
+              config: config,
+            );
+            final reason =
+                'corner=$corner fold=$fold size=${config.resizeThreshold} points=$points';
+            expect(frame, isNotNull, reason: reason);
+            final actual = [
+              frame!.topLeft,
+              frame.topRight,
+              frame.bottomRight,
+              frame.bottomLeft,
+            ];
+            for (var i = 0; i < 4; i++) {
+              expect(
+                (actual[i] - points[i]).distance,
+                lessThan(20),
+                reason: '$reason result=$frame corner=$i',
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+  test('partial side gaps retain the original page boundary', () async {
+    final scene = image.Image(width: 600, height: 800);
+    image.fill(scene, color: image.ColorRgb8(45, 45, 45));
+    image.fillRect(
+      scene,
+      x1: 90,
+      y1: 70,
+      x2: 510,
+      y2: 730,
+      color: image.ColorRgb8(245, 245, 245),
+    );
+    image.fillRect(
+      scene,
+      x1: 485,
+      y1: 290,
+      x2: 520,
+      y2: 370,
+      color: image.ColorRgb8(45, 45, 45),
+    );
+    for (final config in [
+      EdgeDetectionConfig.fast,
+      EdgeDetectionConfig.accurate,
+    ]) {
+      final frame = await detectEdgesFromImageBytes(
+        _png(scene),
+        config: config,
+      );
+      expect(frame, isNotNull);
+      final expected = [
+        const Offset(90, 70),
+        const Offset(510, 70),
+        const Offset(510, 730),
+        const Offset(90, 730),
+      ];
+      final actual = [
+        frame!.topLeft,
+        frame.topRight,
+        frame.bottomRight,
+        frame.bottomLeft,
+      ];
+      for (var i = 0; i < 4; i++) {
+        expect((actual[i] - expected[i]).distance, lessThan(20));
+      }
+    }
+  });
   test(
     'blank scenes and round objects do not produce document corners',
     () async {
@@ -236,6 +377,43 @@ void registerProcessingTests() {
         color: image.ColorRgb8(245, 245, 245),
       );
       expect(await detectEdgesFromImageBytes(_png(scene)), isNull);
+    },
+  );
+  test(
+    'clutter and shapes without four supported sides are rejected',
+    () async {
+      for (final config in [
+        EdgeDetectionConfig.fast,
+        EdgeDetectionConfig.accurate,
+      ]) {
+        final scene = image.Image(width: 600, height: 800);
+        final background = image.ColorRgb8(45, 45, 45);
+        final foreground = image.ColorRgb8(245, 245, 245);
+        image.fill(scene, color: background);
+        image.fillPolygon(
+          scene,
+          vertices: [
+            image.Point(90, 700),
+            image.Point(300, 70),
+            image.Point(510, 700),
+          ],
+          color: foreground,
+        );
+        expect(
+          await detectEdgesFromImageBytes(_png(scene), config: config),
+          isNull,
+        );
+        image.fill(scene, color: background);
+        for (var y = 100; y <= 700; y += 150) {
+          for (var x = 100; x <= 500; x += 200) {
+            image.fillCircle(scene, x: x, y: y, radius: 35, color: foreground);
+          }
+        }
+        expect(
+          await detectEdgesFromImageBytes(_png(scene), config: config),
+          isNull,
+        );
+      }
     },
   );
   test(

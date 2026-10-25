@@ -33,9 +33,15 @@ void main() {
     },
   );
   test(
-    'crossing, concave, duplicate and out-of-bounds corners are rejected',
+    'crossing, concave, collapsed, duplicate and out-of-bounds corners are rejected',
     () {
       for (final points in [
+        [
+          const Offset(.49, .1),
+          const Offset(.51, .1),
+          const Offset(.9, .9),
+          const Offset(.1, .9),
+        ],
         [
           const Offset(.1, .1),
           const Offset(.9, .9),

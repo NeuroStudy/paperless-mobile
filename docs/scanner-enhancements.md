@@ -9,9 +9,32 @@ at `4e2f3cd9e5abbb4797a63a2a2fbdfdec3f574de3`.
 
 Recognition combines gradient-adaptive edges and Otsu paper separation. A bounded
 contour search ranks convex quadrilaterals using edge support, contour agreement
-and area. Camera frames and still images use the same detector and retain v5's
-configuration, coordinate system, smoothing and auto-capture tracker. The previous
-native tracker's hidden-after-stability overlay is intentionally not carried over.
+and area. Camera frames and still images share ordinary page selection and retain
+v5's configuration, coordinate system, smoothing and auto-capture tracker. The
+previous native tracker's hidden-after-stability overlay is intentionally not
+carried over.
+
+Live recognition retains ordinary contour selection without corner reconstruction.
+Captured and imported images can repair one folded or stapled corner after page
+selection by extending the surviving sides. Repairs preserve the other three
+corners exactly, require a five-sided outline and support on every page boundary,
+and retain perspective instead of imposing a paper aspect ratio. Reconstruction
+allows at most 15% added contour area and 35% extrapolation along either adjoining
+edge, and must improve those sides' support by at least five percentage points.
+Reconstructed outlines never compete with ordinary pages in global ranking.
+When ordinary selection finds no page, a folded-page fallback needs at least 85%
+agreement with an enclosed paper-mask component. Collapsed sides are rejected so
+a blurred triangle tip cannot become a fourth document edge.
+
+Detection startup is shared and frame skipping begins before worker readiness.
+Worker startup and requests have five- and three-second deadlines; worker errors,
+exits and cancellations release pending work and ports. A successful no-document
+result does not trigger recovery. Three seconds without camera frames restarts
+the stream, then replaces the camera if the stream remains silent. Retries use
+capped backoff. Camera release, resume and stream transitions are serialized;
+session generations reject stale results and reset smoothing and auto-capture.
+Capture snapshots its crop fallback and awaits a detection pause before taking
+the picture, with resume in the failure path as well as after successful editing.
 
 Enhance uses the refined color workbench algorithm rather than the previous
 unsharp mask. Reduce shadows defaults on, but Enhance itself still defaults off.
@@ -184,14 +207,23 @@ $env:JAVA_HOME = 'C:/Program Files/Eclipse Adoptium/jdk-21.0.6.7-hotspot'
 
 ## Verification
 
-Use the repository's pinned Flutter SDK. After dependency setup and code generation:
+Use a Flutter SDK compatible with the resolved dependencies. The bundled SDK is
+usable only when it meets those dependencies' Dart requirements. After dependency
+setup and code generation, use that SDK consistently; the Android harness accepts
+an optional `-FlutterPath` pointing to its executable:
 
 ```powershell
-.\flutter\bin\flutter.bat test test/scanner test/src/widget_test.dart
-.\scripts\test_scanner_android.ps1 -DeviceId emulator-5554
-.\flutter\bin\flutter.bat analyze --no-pub
-.\flutter\bin\flutter.bat build apk --debug --no-pub
+$scannerFlutter = 'C:/dev/flutter/bin/flutter.bat'
+& $scannerFlutter test test/scanner test/src/widget_test.dart --no-pub
+.\scripts\test_scanner_android.ps1 -DeviceId emulator-5554 `
+  -FlutterPath $scannerFlutter
+& $scannerFlutter analyze --no-pub --no-fatal-infos
+& $scannerFlutter build apk --debug --no-pub
 ```
+
+For edge recognition and camera lifecycle validation independently of additional
+enhancement experiments, pass
+`-TestTarget integration_test/scanner_edges_test.dart` to the Android harness.
 
 The processing cases are shared between the desktop and Android harnesses,
 adapting the v4 native suites. Fixtures are generated synthetically,
@@ -207,14 +239,40 @@ or a dedicated test device. The historical commented-out cubit test has no test
 entry point; the command above selects the existing runnable app test and the
 scanner suite.
 
-Validated on Windows and an Android API 36 emulator: 17 desktop tests and 11
-Android checks, including live detection through the auto-capture tracker,
-editor persistence, camera streaming/capture and teardown. The scanner sources
-and tests have no analyzer findings. Full-app analysis has nine existing
-informational lints outside the changed scanner code and no errors or warnings.
-The x64 Android debug build succeeds. A 7.7MP analysis/render took approximately
-1.3 seconds in a warm emulator run; this debug-process observation is not a
-physical-device performance guarantee.
+Fold regression cases exercise every corner on perspective pages, narrow receipts
+and landscape pages, including stacked pages and shadows, at both processing
+resolutions. The original corners must remain within 20 pixels on a 600 x 800
+fixture. Tests also cover side gaps, unsupported shapes, raw camera row strides,
+worker startup/crashes/timeouts, stream retries, capture pauses and stale results,
+and backgrounding or closing the camera during initialization. Android camera
+integration additionally pauses for capture and checks replacement on resume.
+
+Historical validation on 2026-10-25: the initial recovery/fold implementation
+passed 48 selected desktop tests and 14 Android checks. The later page-selection
+correction passed 58 desktop tests and 24 Android checks before the subsequent
+pixel-preserving crop regressions were added. These counts describe those earlier
+snapshots, not the current combined suite.
+
+Final staged-tree validation on 2026-10-25 passed all 71 Windows scanner/app tests
+and all 43 checks in `scanner_processing_test.dart` on the Android API 36 x86_64
+emulator, including live capture and background/resume. The separate camera-recovery
+commit passed 58 Windows tests before folded-corner changes were staged. Validation
+used an isolated copy of each staged tree, existing generated sources and the local
+dependency resolution, with Flutter 3.41.9 / Dart 3.11.5. Scanner sources, scanner
+tests and both Android integration entrypoints passed analysis without findings.
+The edge harness `scanner_edges_test.dart` includes processing/editor, crop,
+detection and camera streaming/capture regressions; `scanner_processing_test.dart`
+additionally registers the six enhancement refinement cases.
+
+The x64 Android debug integration APK built successfully. Kotlin logged cross-drive
+incremental-cache errors and recovered through compiler fallback; this run does
+not establish that the project-level incremental-compilation guard covers every
+plugin. Flutter's post-test cleanup also logged an uninstall error for the
+unsuffixed application ID, while the test process exited successfully. The test
+APK uses the `.debug` suffix. Historical full-app analysis had nine informational
+lints outside the changed scanner code and no errors or warnings. Historical warm
+7.7MP analysis/render timings near 1.5 seconds are debug observations, not
+physical-device performance guarantees.
 
 The Python comparison workbench is retained in `tools/scanner_color/`. Its previous
 Android comparison measurements describe the preserved v4 implementation; use a
