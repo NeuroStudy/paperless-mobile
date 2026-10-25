@@ -5,14 +5,15 @@
 Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 All bug reports or feature requests are welcome, even if you can't contribute code!
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
+This fork has one maintained development line. Read [AGENTS.md](AGENTS.md) and
+[the consolidation log](docs/alpha2-consolidation.md) before making changes.
 
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'feat: Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+1. Work in `D:\DEV\paperless-mobile` on `codex/scan-enhancement-alpha2`.
+2. Keep each improvement focused, run its regression checks and commit it separately.
+3. Do not create/switch development branches or worktrees without an explicit user request.
+4. Build verification APKs with the guarded command below, then push the maintained branch.
+
+Upstream branches and archive tags are historical references, not development targets.
 
 <!-- GETTING STARTED -->
 
@@ -20,48 +21,33 @@ Don't forget to give the project a star! Thanks again!
 
 To get a local copy up and running follow these simple steps.
 
-## Prerequisites
+## Prerequisites and generated files
 
-- Install an IDE of your choice (e.g. VSCode with the Dart/Flutter extensions)
-- Install the flutter SDK (https://docs.flutter.dev/get-started/install) _or_ use the flutter git submodule pinned in this project by running `git submodule update --init` inside the project root directory.
+Use the Flutter submodule pinned by this repository. A separate installed Flutter
+SDK can generate incompatible caches and test dependency versions. In PowerShell,
+from the project root:
 
-## Install dependencies and generate files
-
-1. First, clone the repository:
-
-```sh
-git clone https://github.com/astubenbord/paperless-mobile.git
+```powershell
+git submodule update --init flutter
+.\flutter\bin\flutter.bat pub get --enforce-lockfile
+.\flutter\bin\flutter.bat gen-l10n
+.\flutter\bin\dart.bat run build_runner build --delete-conflicting-outputs
 ```
 
-You can now run the `scripts/install_dependencies.sh` script at the root of the project, which will automatically install dependencies and generate files for both the app and local packages.
+The standalone scanner is in `packages/paperless_mobile_document_scanner`; its
+runtime dependencies are resolved with the root app. There is no separate
+`packages/paperless_api` code-generation step.
 
-If you want to manually install dependencies and build generated files, you can also run the following commands:
+Run the maintained test entrypoints and Android harness:
 
-### Inside the `packages/paperless_api/` folder:
+```powershell
+.\flutter\bin\flutter.bat test --no-pub test/scanner test/api test/features/chat test/src/widget_test.dart
+.\scripts\test_scanner_android.ps1 -DeviceId emulator-5556
+.\flutter\bin\flutter.bat analyze --no-pub --no-fatal-infos
+```
 
-2. Install the dependencies for `paperless_api`
-   ```sh
-   dart pub get
-   ```
-3. Build generated files for `paperless_api`
-   ```sh
-    dart pub run build_runner build --delete-conflicting-outputs
-   ```
-
-### Inside the project's root folder
-
-4. Install the dependencies for the app
-   ```sh
-   dart pub get
-   ```
-5. Build generated files for the app
-   ```sh
-   dart pub run build_runner build --delete-conflicting-outputs
-   ```
-6. Generate the localization files for the app
-   ```sh
-   flutter gen-l10n
-   ```
+Use a working JDK 21 for direct Gradle commands. Flutter also supports a configured
+JDK location; verify it if the environment points to a removed Android Studio install.
 
 ## Build release version
 
@@ -95,24 +81,34 @@ keystore paths before app compilation. Debug builds do not require release keys.
 See the [Flutter signing instructions](https://docs.flutter.dev/deployment/android#sign-the-app)
 for keystore setup. CI continues to use its existing signing action.
 
-### Build and install
+### Build and identify verification APKs
 
-1. Build the app with release profile (here for android):
+Commit source changes first. The standard build command checks the project folder,
+branch, Alpha 2 ancestry, clean working tree, standalone scanner and pinned SDK.
+It resolves locked dependencies, regenerates sources and verifies that the source
+revision did not change during compilation.
 
-```sh
-flutter build apk
+```powershell
+.\scripts\build_alpha2_apk.ps1 -CheckOnly
+.\scripts\build_alpha2_apk.ps1 -Mode release -TargetPlatform android-arm64
 ```
 
-The --release flag is implicit for the build command. You can also run this command with --split-per-abi, which will generate three separate (smaller) binaries.
+`-Mode debug -TargetPlatform android-x64` builds an emulator verification APK.
+The default output is `build/verified-apks/`. Each filename identifies Alpha 2,
+mode, target, version and source revision. The adjacent JSON manifest records
+source/SDK revisions, dependency lock hash, application ID, signing mode and APK
+SHA-256. About displays the short source revision. Builds made outside this
+entrypoint display `unrecorded build` and are not verified artifacts.
 
-2. Install the app to your device (when omitting the `--split-per-abi` flag)
+A release-mode APK using the local debug signing opt-in remains a local test
+artifact. This workflow does not publish an app release or increment its version.
+Preserve the manifest with the APK; the version label alone is not build identity.
 
-```sh
-flutter install
+To install a chosen artifact, use its full path explicitly:
+
+```powershell
+adb install -r "build/verified-apks/<verified-apk-name>.apk"
 ```
 
-or when you built with `--split-per-abi`
-
-```sh
-flutter install --use-application-binary=build/app/outputs/flutter-apk/<apk_file_name>.apk
-```
+Installing with a different signing key requires separate handling of existing
+app data; do not uninstall the installed app merely to bypass a signature mismatch.

@@ -7,6 +7,7 @@ import 'package:paperless_mobile/api/paperless_api.dart';
 import 'package:paperless_mobile/constants.dart';
 import 'package:paperless_mobile/core/extensions/context_extensions.dart';
 import 'package:paperless_mobile/core/extensions/flutter_extensions.dart';
+import 'package:paperless_mobile/core/model/build_provenance.dart';
 import 'package:paperless_mobile/core/repository/saved_view_repository.dart';
 import 'package:paperless_mobile/features/sharing/cubit/receive_share_cubit.dart';
 import 'package:paperless_mobile/generated/assets.gen.dart';
@@ -292,7 +293,8 @@ class AppDrawer extends StatelessWidget {
         AssetImage('assets/logos/paperless_logo_green.png'),
       ),
       applicationName: 'Paperless Mobile',
-      applicationVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
+      applicationVersion:
+          '${packageInfo.version}+${packageInfo.buildNumber} ($buildRevisionLabel)',
       children: [
         Text(S.of(context)!.developedBy('Anton Stubenbord')),
         const SizedBox(height: 16),
