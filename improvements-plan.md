@@ -104,3 +104,74 @@ validation of an Alpha 2 port or proof of physical-phone reliability.
 Commit a future fix separately, referencing the reproduced issue, this source
 commit, the selected changes and actual validation results. Update this document
 to distinguish implemented portions from work that remains deferred.
+
+## Deferred: maximum-resolution camera capture
+
+Recorded on 2026-10-25 at the user's request. This is separate from the deferred
+camera-recovery commit above.
+
+**Status: investigation deferred. Keep Alpha 2's 1080p capture default during
+consolidation.** Do not import the other branch's `resolutionPreset = 'max'`
+default. Explicit higher-resolution overrides already exist; adding a new
+resolution control or changing the production default is not part of this task.
+
+### Goal and current behavior
+
+The goal is to capture more fine document detail for small text, faint writing
+and later OCR, using the highest resolution that produces reliable images on
+the actual device. More output pixels are useful only if they retain correct
+colors, sharp text and page proportions.
+
+Alpha 2's scanner and camera view default to `ResolutionPreset.veryHigh`, a
+1080p target, following commit `9bb8c8d5`. The later v5 scanner instead defaults
+to `ResolutionPreset.max`. Requested presets are negotiated with the camera;
+record actual JPEG dimensions rather than assuming a preset guarantees a
+particular resolution or the sensor's advertised megapixel count. Keep still
+capture resolution separate from the bounded live-detection analysis size.
+
+### Known reason to retain 1080p
+
+The existing investigation in [scanner-enhancements.md](docs/scanner-enhancements.md#capture-color-regression-investigation)
+records physical S25 Ultra testing (SM-S938B, Android 16):
+
+- Actual 2160x3840 captures contained a green left border, reversed colors and
+  displaced colored lettering/signatures with both NV21 and YUV420 analysis.
+- Actual 720x1280 and 1080x1920 captures retained correct colors and aligned ink.
+- Pillow, Flutter and OpenCV decoded each original to identical RGB pixels,
+  locating the 4K corruption in native JPEG capture before app editing.
+- The 1080p perspective/editor outputs retained correct colors with Enhance
+  both enabled and disabled. Switching analysis format alone did not fix 4K.
+
+These are historical results documented for that phone and camera setup, not
+evidence that maximum resolution fails on every device. Increasing resolution
+must not reintroduce this known regression, and enhancement cannot restore
+already-corrupted source captures.
+
+### Future investigation and acceptance criteria
+
+1. Extend the existing `-CaptureComparison` diagnostic to include
+   `ResolutionPreset.max` alongside `high`, `veryHigh` and `ultraHigh`. Preserve
+   the current stop-stream-then-capture sequence and record requested presets,
+   actual JPEG/preview/analysis dimensions, formats, device and software versions.
+2. Compare the same stationary document at each supported resolution, including
+   blue/orange lettering, fine black text, faint signatures and neutral borders.
+   Retain the untouched JPEG and compare Flutter/OpenCV decoding, perspective
+   output, editor preview and saved exports. Keep private images out of Git.
+3. Require correct colors, aligned ink, no green border, retained faint strokes,
+   accurate proportions and displayed/saved pixel agreement. Confirm an actual
+   detail benefit over 1080p; larger dimensions alone do not establish quality.
+4. Measure capture/edit latency, peak memory and repeated-capture stability.
+   Detection must remain bounded and responsive; increasing still resolution
+   must not require full-resolution analysis of every live frame.
+5. Validate on the affected S25 Ultra and representative additional physical
+   devices. Emulator fallback to a lower resolution cannot validate 4K or max.
+   Verify that unsupported requests and camera initialization failures can fall
+   back to the known working 1080p configuration without losing existing scans.
+6. Keep higher resolution explicit and opt-in until these checks pass. Any
+   later default change requires its own documented implementation, tests and
+   commit. Do not add unvalidated automatic corruption detection or a device
+   blacklist as a substitute for diagnosing the capture fault.
+
+No camera settings or capture behavior are changed by this document. Future
+work should update this section with the actual resolutions tested, image-quality
+findings, performance results and the resulting supported configuration.
