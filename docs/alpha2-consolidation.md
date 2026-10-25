@@ -38,16 +38,16 @@ Final target revisions and validation are recorded here after implementation.
 
 | Source | Change | Status |
 | --- | --- | --- |
-| `3df8ee1b` | Saved-view query commas | Pending |
-| `e16ff893` | Color protection/background cleanup | Pending; adapt package imports |
-| `fc5bee5b` | Native document chat | Pending; retain Alpha 2 scanner/PDF integration |
-| `5c295079` | Exact rectangular crops | Pending; retain perspective ratio recovery |
-| `312c79ba` | Android build hardening | Pending |
+| `3df8ee1b` | Saved-view query commas | `b409f473`; 75 query checks passed |
+| `e16ff893` | Color protection/background cleanup | `28d70b0b`; six refinement checks and Python synthetic gates passed |
+| `fc5bee5b` | Native document chat | `cf4812a9`; 43 API/cubit/navigation/view checks passed |
+| `5c295079` | Exact rectangular crops | `2033ed79`; 31 crop/proportion/capture checks passed |
+| `312c79ba` | Android build hardening | `5039f5bd`; Gradle configuration passed on JDK 21 |
 | `271aa5fa` | Detection/camera recovery | Deferred; do not port |
-| `5c477514` | Folded-corner repair | Pending; still-image adaptation only |
-| Original uncommitted changes | Release signing opt-in and validation | Pending; separate commit |
-| Compatibility addition | Copy-based recovery of newer saved scan pages | Pending; preserve originals and account ownership |
-| Build provenance | Canonical build guard, revision display and APK manifest | Pending |
+| `5c477514` | Folded-corner repair | `d8e7329d`; 45 processing/reference/geometry checks passed |
+| Original uncommitted changes | Release signing opt-in and validation | `544ceb26`; opt-in accepted and missing distribution keys rejected |
+| Compatibility addition | Copy-based recovery of newer saved scan pages | `f604a8fe`; 12 state/recovery checks plus two navigation checks passed |
+| Build provenance | Canonical build guard, revision display and APK manifest | `acb1d8d5`; dirty sources rejected and clean canonical sources accepted |
 
 The old Flutter checkout modification, incidental dependency lock drift and
 obsolete edge-detection package caches are archived rather than ported.
@@ -78,3 +78,37 @@ copies use `.part` files and retry safely. Missing/corrupt pages are logged and
 remain eligible for retry; uncropped originals are never substituted. The Alpha 2
 flat scan interface is retained, including its existing legacy temporary files;
 the newer grouping and persistent re-edit UI are not imported.
+
+## Combined verification on 2026-10-26
+
+- Pinned Flutter 3.41.0 / Dart 3.11.0: all 229 selected Windows tests passed
+  across scanner, API, chat and the runnable app widget entrypoint.
+- Android API 36 x86_64 emulator: all 96 integration checks passed, including
+  processing/editor, folded pages, native recognition references, real camera
+  input/capture, lifecycle and saved-scan compatibility cases.
+- Whole-project analysis has no errors or warnings and 19 existing informational
+  lints. Generated `build/` snapshots are excluded; maintained source remains analyzed.
+- The Python synthetic refinement workbench passed its quantitative preservation
+  and cleanup gates. The private image inputs from older investigations were not
+  required or uploaded. Metrics are retained under `build/scanner-color-refinement`
+  and verification logs in the private consolidation backup.
+
+The Android runner exited successfully. Flutter's post-test cleanup attempted to
+uninstall the unsuffixed app ID and logged `DELETE_FAILED_INTERNAL_ERROR`; the
+test APK uses `.debug`. Decoder errors in the recovery suite are expected from
+its deliberately corrupt image fixture. Neither log is a failed test. Normal
+main-entrypoint verification APKs are built separately with source provenance.
+
+Two development-only lock entries were aligned with the pinned SDK (`15a2d22b`):
+matcher 0.12.18 and test_api 0.7.8. `7e6bd9d1` declares the already locked OpenCV
+package as a direct test dependency and scopes analysis away from generated
+build snapshots. No runtime dependency version was upgraded.
+
+Source inspection corrected an assumption in older notes: Alpha 2's standalone
+editor defaults `initialEnhanced` to true and the new-capture caller retains that
+default. Consolidation preserves this actual Alpha 2 behavior; it does not import
+the v5 editor's different default. Camera capture remains 1080p.
+
+Emulator/synthetic checks do not establish real-phone capture accuracy, memory
+behavior or performance. Test the resulting APK on the phone before making
+physical-device claims. iOS runtime/build validation remains outstanding.
